@@ -1,4 +1,4 @@
-﻿namespace DenenAvrNet
+﻿namespace DonenAvrNet
 {
     public class Class1
     {

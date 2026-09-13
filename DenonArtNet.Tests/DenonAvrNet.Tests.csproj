@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DenenAvrNet\DenenAvrNet.csproj" />
+    <ProjectReference Include="..\DenonAvrNet\DenonAvrNet.csproj" />
   </ItemGroup>
 
   <ItemGroup>
