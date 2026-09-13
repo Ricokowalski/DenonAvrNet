@@ -1,5 +1,5 @@
 <Solution>
-  <Project Path="DenenAvrNet/DenonAvrNet.csproj" />
-  <Project Path="DenonArtNet.Tests/DenonAvrNet.Tests.csproj" />
+  <Project Path="DenonAvrNet/DenonAvrNet.csproj" />
+  <Project Path="DenonAvrNet.Tests/DenonAvrNet.Tests.csproj" />
   <Project Path="DenonAvrNet.Sample/DenonAvrNet.Sample.csproj" />
 </Solution>
