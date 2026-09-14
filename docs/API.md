@@ -8,9 +8,10 @@ vorgesehenen Lebenszyklus von `DenonAvrNet`.
 1. Einen `DenonAvrClient` für Hostname oder IP-Adresse erzeugen.
 2. Einmal `InitializeAsync()` aufrufen.
 3. Mit `UpdateAsync()` einen bestätigten Status lesen.
-4. Steuerbefehle senden.
-5. Bei Bedarf nach einer kurzen Verarbeitungszeit erneut den Status lesen.
-6. Den Client mit `Dispose()` bzw. `using` freigeben.
+4. Optional die Receiver-Fähigkeiten mit `ProbeReceiverCapabilitiesAsync()` ergänzen.
+5. Steuerbefehle über `Auto`, HTTP oder Telnet senden.
+6. Bei Bedarf nach einer kurzen Verarbeitungszeit erneut den Status lesen.
+7. Den Client mit `Dispose()` bzw. `using` freigeben.
 
 ```csharp
 using DenonAvrNet;
@@ -20,6 +21,7 @@ using var receiver = new DenonAvrClient(
     requestTimeout: TimeSpan.FromSeconds(5));
 
 await receiver.InitializeAsync();
+var capabilities = await receiver.ProbeReceiverCapabilitiesAsync();
 
 var before = await receiver.UpdateAsync();
 await receiver.SetVolumeAsync(-35.5);
@@ -37,8 +39,8 @@ new DenonAvrClient(string host, TimeSpan? requestTimeout = null)
 
 `host` darf eine IP-Adresse, ein Hostname oder eine HTTP-/HTTPS-Adresse ohne
 benötigten Befehlspfad sein. Bei einer vollständigen Adresse übernimmt der
-Client nur den Hostanteil. Die Denon-Abfragen selbst werden derzeit über HTTP
-ausgeführt.
+Client nur den Hostanteil. Status- und Geräteabfragen erfolgen über HTTP/XML;
+Main-Zone-Steuerbefehle können über HTTP oder Telnet gesendet werden.
 
 Der Standardwert für `requestTimeout` beträgt fünf Sekunden. Der interne
 Verbindungsaufbau und `HttpClient` verwenden dasselbe Zeitlimit.
@@ -48,12 +50,14 @@ Verbindungsaufbau und `HttpClient` verwenden dasselbe Zeitlimit.
 | Eigenschaft | Typ | Beschreibung |
 | --- | --- | --- |
 | `Host` | `string` | normalisierter Hostname bzw. IP-Adresse |
+| `PreferredControlProtocol` | `DenonControlProtocol` | Standardübertragungsweg für Main-Zone-Steuerbefehle; Voreinstellung `Auto` |
 | `HttpPort` | `int?` | nach der Initialisierung erkannter Port |
 | `DeviceInfo` | `DenonDeviceInfo?` | zuletzt erkannte Geräteinformationen |
+| `ReceiverCapabilities` | `DenonReceiverCapabilities?` | für dieses AVR-Modell ermittelte Hardware-Fähigkeiten |
 | `State` | `DenonReceiverState?` | zuletzt bestätigter Status-Snapshot |
 
-`HttpPort`, `DeviceInfo` und `State` sind vor der jeweiligen erfolgreichen
-Abfrage `null`.
+`HttpPort`, `DeviceInfo`, `ReceiverCapabilities` und `State` sind vor der
+jeweiligen erfolgreichen Abfrage `null`.
 
 ### `InitializeAsync`
 
@@ -66,8 +70,8 @@ Die Methode fragt `Deviceinfo.xml` zuerst auf Port 80 und anschließend auf Port
 8080 ab. Erst eine syntaktisch und inhaltlich gültige Denon-Antwort schließt die
 Initialisierung ab.
 
-Bei Erfolg werden `HttpPort` und `DeviceInfo` gesetzt. Schlagen beide Ports
-fehl, wird eine `DenonConnectionException` ausgelöst, deren innere
+Bei Erfolg werden `HttpPort`, `DeviceInfo` und die zunächst bekannten
+`ReceiverCapabilities` gesetzt. Schlagen beide Ports fehl, wird eine `DenonConnectionException` ausgelöst, deren innere
 `AggregateException` die einzelnen Fehler enthält.
 
 ### `UpdateAsync`
@@ -104,6 +108,10 @@ Danach werden – sofern verfügbar – über `AppCommand0300.xml` abgefragt:
 Auf Port 80 wird die ältere Main-Zone-Status-XML verwendet. Dort stehen die
 erweiterten Audioinformationen normalerweise nicht zur Verfügung.
 
+Nach dem ersten `UpdateAsync()` ist `ReceiverCapabilities.SupportsAppCommand0300`
+auf `true` oder `false` gesetzt. Vor diesem Abruf ist der Wert `null`, weil die
+Erweiterung noch nicht geprüft wurde.
+
 Die Requests werden nicht parallel ausgeführt. Dadurch werden Firmwareprobleme
 mit gleichzeitig eintreffenden AppCommand-Anfragen vermieden.
 
@@ -111,13 +119,84 @@ Der Status-Snapshot enthält bei Receivern mit weiteren Zonen zusätzlich `Zone2
 und `Zone3`. Jeder dieser optionalen `DenonZoneState`-Werte enthält Power,
 Eingang, Lautstärke und Mute.
 
-### `DenonTelnetClient` – Zone 2 und Zone 3 steuern
+### Gemeinsame HTTP-/Telnet-Steuerung
 
-Für die zusätzlichen Zonen verwendet die Bibliothek Denons Telnet-Protokoll auf
-Port 23. Das Konsolenbeispiel stellt die vollständige Zonensteuerung über den
-Menüpunkt `T` bereit. Der Status selbst wird weiterhin über die HTTP-API gelesen,
-weil eine Telnet-Antwort wie `Z3SOURCE` nur den hinterlegten Eingang, nicht den
-Stromzustand beschreibt.
+Die Main-Zone-Methoden verwenden eine gemeinsame API. Ohne Protokollparameter
+gilt `PreferredControlProtocol`, standardmäßig `Auto`:
+
+```csharp
+await receiver.PowerOnAsync();
+await receiver.SetVolumeAsync(-30.0);
+await receiver.SetInputAsync("CBL/SAT");
+
+// Einzelnen Befehl erzwingen:
+await receiver.SetVolumeAsync(-25.0, DenonControlProtocol.Telnet);
+
+// Für alle nachfolgenden Main-Zone-Befehle:
+receiver.PreferredControlProtocol = DenonControlProtocol.Telnet;
+```
+
+`Auto` nutzt nach einer erfolgreichen `InitializeAsync()` zunächst HTTP. Wurde
+noch nicht initialisiert, wird Telnet verwendet. Liefert der HTTP-Steuerbefehl
+einen `HttpRequestException` (beispielsweise HTTP 403), fällt `Auto` einmalig
+auf Telnet zurück. Bei ausdrücklich gewähltem `Http` oder `Telnet` gibt es keinen
+Fallback.
+
+### `AvrFeature` und `DenonReceiverCapabilities`
+
+`AvrFeature` beschreibt, welche Funktion die **Bibliothek** anbietet. Mit
+`GetSupportedProtocols()` kann pro Funktion abgefragt werden, über welche
+Übertragungswege sie implementiert ist:
+
+```csharp
+var transports = receiver.GetSupportedProtocols(AvrFeature.MainZoneVolume);
+// enthält DenonControlProtocol.Http und DenonControlProtocol.Telnet
+
+var eventTransport = receiver.GetSupportedProtocols(AvrFeature.LiveEvents);
+// enthält nur DenonControlProtocol.Telnet
+```
+
+| `AvrFeature` | Transport in der Library |
+| --- | --- |
+| `MainZonePower`, `MainZoneVolume`, `MainZoneMute`, `MainZoneInput` | HTTP und Telnet |
+| `MainZoneStatus`, `AudioInformation`, `ActiveSpeakerStatus` | HTTP |
+| `Zone2Control`, `Zone3Control`, `LiveEvents`, `SpeakerPresetControl`, `SurroundModeControl`, `DigitalInputModeControl` | Telnet |
+
+`DenonReceiverCapabilities` beschreibt dagegen das **erkannte AVR-Modell**.
+Nach `InitializeAsync()` sind HTTP, AppCommand, die Zonenanzahl sowie Zone 2/3
+bekannt. `SupportsTelnet` bleibt zunächst `null`, damit ein nicht getesteter
+Port nicht fälschlich als nicht unterstützt gilt. Ein lesender `PW?`-Befehl
+prüft den Port ohne Zustandsänderung:
+
+```csharp
+var receiverCapabilities = await receiver.ProbeReceiverCapabilitiesAsync();
+Console.WriteLine(receiverCapabilities.SupportsTelnet); // true oder false
+
+var hasZone3 = receiver.IsFeatureAvailable(AvrFeature.Zone3Control);
+```
+
+`IsFeatureAvailable()` kombiniert die Hardware-Fähigkeiten mit dem jeweiligen
+Feature. Vor `InitializeAsync()` gibt die Methode `false` zurück, weil noch kein
+konkreter Receiver erkannt ist.
+
+### `DenonTelnetClient` – direkte Telnet-Steuerung
+
+Für direkte Spezialbefehle und die zusätzlichen Zonen stellt die Bibliothek
+`DenonTelnetClient` bereit. Das Konsolenbeispiel stellt die vollständige
+Zonensteuerung über den Menüpunkt `T` bereit. Der Status selbst wird weiterhin
+über die HTTP-API gelesen, weil eine Telnet-Antwort wie `Z3SOURCE` nur den
+hinterlegten Eingang, nicht den Stromzustand beschreibt.
+
+Die Main Zone kann direkt verwendet werden; in Anwendungen ist normalerweise
+die gemeinsame API von `DenonAvrClient` vorzuziehen:
+
+```csharp
+var telnet = new DenonTelnetClient("10.37.0.190");
+await telnet.PowerOnAsync();
+await telnet.SetVolumeAsync(-30.0);
+await telnet.SetMuteAsync(false);
+await telnet.SetInputAsync("Media Player");
+```
 
 ```csharp
 var zones = new DenonTelnetClient("10.37.0.190");
@@ -238,6 +317,8 @@ aktiviert, deaktiviert oder umkonfiguriert wurden. Der erste Aufruf von
 ```csharp
 Task PowerOnAsync(CancellationToken cancellationToken = default)
 Task PowerOffAsync(CancellationToken cancellationToken = default)
+Task PowerOnAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default)
+Task PowerOffAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default)
 ```
 
 `PowerOffAsync()` versetzt die Main Zone in Standby. Ob der Receiver danach
@@ -249,8 +330,14 @@ Netzwerksteuerung im Standby ab.
 ```csharp
 Task VolumeUpAsync(CancellationToken cancellationToken = default)
 Task VolumeDownAsync(CancellationToken cancellationToken = default)
+Task VolumeUpAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default)
+Task VolumeDownAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default)
 Task SetVolumeAsync(
     double volumeDb,
+    CancellationToken cancellationToken = default)
+Task SetVolumeAsync(
+    double volumeDb,
+    DenonControlProtocol protocol,
     CancellationToken cancellationToken = default)
 ```
 
@@ -264,6 +351,10 @@ einem Dezimalpunkt an den Receiver übertragen.
 Task SetMuteAsync(
     bool muted,
     CancellationToken cancellationToken = default)
+Task SetMuteAsync(
+    bool muted,
+    DenonControlProtocol protocol,
+    CancellationToken cancellationToken = default)
 ```
 
 `true` aktiviert Mute, `false` deaktiviert Mute.
@@ -273,6 +364,10 @@ Task SetMuteAsync(
 ```csharp
 Task SetInputAsync(
     string input,
+    CancellationToken cancellationToken = default)
+Task SetInputAsync(
+    string input,
+    DenonControlProtocol protocol,
     CancellationToken cancellationToken = default)
 ```
 
@@ -304,6 +399,25 @@ await receiver.SendCommandAsync(
 ```
 
 Diese Methode prüft nicht, ob der Receiver den übergebenen Befehl unterstützt.
+
+## `DenonControlProtocol`
+
+| Wert | Verhalten |
+| --- | --- |
+| `Auto` | HTTP nach Initialisierung, sonst Telnet; bei HTTP-Fehler Fallback auf Telnet |
+| `Http` | erzwingt HTTP ohne Fallback; `InitializeAsync()` ist erforderlich |
+| `Telnet` | erzwingt Telnet auf Port 23 ohne Fallback |
+
+## `DenonReceiverCapabilities`
+
+| Eigenschaft | Typ | Beschreibung |
+| --- | --- | --- |
+| `SupportsHttp` | `bool` | HTTP-Geräteabfrage wurde erfolgreich initialisiert |
+| `SupportsTelnet` | `bool?` | Ergebnis von `ProbeReceiverCapabilitiesAsync()`; vorher `null` |
+| `SupportsAppCommand` | `bool` | aktueller Client verwendet die AppCommand-Schnittstelle auf Port 8080 |
+| `SupportsAppCommand0300` | `bool?` | Ergebnis der erweiterten Audioabfrage; vor `UpdateAsync()` `null` |
+| `SupportsZone2`, `SupportsZone3` | `bool` | aus der vom Receiver gemeldeten Zonenanzahl abgeleitet |
+| `ZoneCount` | `int?` | vom Receiver gemeldete Zonenanzahl |
 
 ## `DenonDeviceInfo`
 

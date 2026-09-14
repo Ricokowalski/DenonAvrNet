@@ -6,6 +6,32 @@ namespace DenonAvrNet.Tests;
 public sealed class DenonAvrClientTests
 {
     [Fact]
+    public async Task InitializeAsync_PopulatesReceiverCapabilitiesAndFeatureTransports()
+    {
+        var handler = CreateInitializedReceiverHandler();
+        using var transport = new DenonHttpTransport(handler, TimeSpan.FromSeconds(1));
+        using var client = new DenonAvrClient("10.37.0.190", transport);
+
+        await client.InitializeAsync();
+
+        var capabilities = Assert.IsType<DenonAvrNet.Models.DenonReceiverCapabilities>(client.ReceiverCapabilities);
+        Assert.True(capabilities.SupportsHttp);
+        Assert.True(capabilities.SupportsAppCommand);
+        Assert.Null(capabilities.SupportsTelnet);
+        Assert.True(capabilities.SupportsZone2);
+        Assert.True(capabilities.SupportsZone3);
+        Assert.True(client.IsFeatureAvailable(AvrFeature.MainZoneVolume));
+        Assert.True(client.IsFeatureAvailable(AvrFeature.Zone2Control));
+        Assert.False(client.IsFeatureAvailable(AvrFeature.AudioInformation));
+        Assert.Equal(
+            new[] { DenonControlProtocol.Http, DenonControlProtocol.Telnet },
+            client.GetSupportedProtocols(AvrFeature.MainZoneVolume).OrderBy(protocol => protocol));
+        Assert.Equal(
+            new[] { DenonControlProtocol.Telnet },
+            client.GetSupportedProtocols(AvrFeature.LiveEvents));
+    }
+
+    [Fact]
     public async Task InitializeAsync_FallsBackFromPort80ToPort8080()
     {
         var handler = new StubHttpMessageHandler((request, _) =>

@@ -134,6 +134,32 @@ Antwortet der HTTP-Steuerbefehl mit einem Netzwerk-/HTTP-Fehler wie `403`, versu
 die Bibliothek Telnet. Wird explizit `Http` oder `Telnet` gewählt, gibt es keinen
 Fallback – das macht Diagnose und vorhersehbares Verhalten möglich.
 
+### Feature- und Gerätefähigkeiten
+
+`AvrFeature` beschreibt eine Funktion der Bibliothek und nicht die Hardware. Mit
+`GetSupportedProtocols()` lässt sich pro Funktion abfragen, welcher Übertragungsweg
+implementiert ist:
+
+```csharp
+var transports = receiver.GetSupportedProtocols(AvrFeature.MainZoneVolume);
+// enthält Http und Telnet
+```
+
+`ReceiverCapabilities` beschreibt hingegen den erkannten AVR. Nach
+`InitializeAsync()` sind HTTP, AppCommand, Zonenanzahl sowie Zone 2/3 bekannt.
+Die Unterstützung von AppCommand0300 wird beim ersten `UpdateAsync()` erkannt.
+Telnet wird bewusst nicht automatisch aktiv abgefragt; mit `PW?` kann es ohne
+Zustandsänderung geprüft werden:
+
+```csharp
+await receiver.InitializeAsync();
+var capabilities = await receiver.ProbeReceiverCapabilitiesAsync();
+
+Console.WriteLine(capabilities.SupportsTelnet);       // true oder false
+Console.WriteLine(capabilities.SupportsAppCommand0300); // true, false oder vor Update null
+Console.WriteLine(receiver.IsFeatureAvailable(AvrFeature.Zone3Control));
+```
+
 Ein Steuerbefehl verändert `receiver.State` nicht vorab. Für einen vom Gerät
 bestätigten Zustand muss anschließend erneut abgefragt werden:
 

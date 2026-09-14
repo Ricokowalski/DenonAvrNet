@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using System.Net.Sockets;
 using DenonAvrNet.Exceptions;
 using DenonAvrNet.Models;
 using DenonAvrNet.Protocol;
@@ -12,6 +13,16 @@ public sealed class DenonAvrClient : IDisposable
     private readonly DenonHttpTransport _httpTransport;
     private readonly DenonTelnetClient _telnetClient;
     private readonly bool _ownsTransport;
+    private static readonly IReadOnlySet<DenonControlProtocol> HttpAndTelnet =
+        new HashSet<DenonControlProtocol>
+        {
+            DenonControlProtocol.Http,
+            DenonControlProtocol.Telnet
+        };
+    private static readonly IReadOnlySet<DenonControlProtocol> HttpOnly =
+        new HashSet<DenonControlProtocol> { DenonControlProtocol.Http };
+    private static readonly IReadOnlySet<DenonControlProtocol> TelnetOnly =
+        new HashSet<DenonControlProtocol> { DenonControlProtocol.Telnet };
     private IReadOnlyList<string>? _availableInputs;
     private bool _requiresSequentialAppCommandRequests;
     private bool _disposed;
@@ -53,6 +64,12 @@ public sealed class DenonAvrClient : IDisposable
     /// <summary>Gets the device information returned by the last initialization.</summary>
     public DenonDeviceInfo? DeviceInfo { get; private set; }
 
+    /// <summary>
+    /// Gets the detected capabilities of this concrete receiver, or <see langword="null"/>
+    /// until <see cref="InitializeAsync"/> has succeeded.
+    /// </summary>
+    public DenonReceiverCapabilities? ReceiverCapabilities { get; private set; }
+
     /// <summary>Gets the most recently confirmed receiver state.</summary>
     public DenonReceiverState? State { get; private set; }
 
@@ -78,6 +95,7 @@ public sealed class DenonAvrClient : IDisposable
                 var deviceInfo = DenonXmlParser.ParseDeviceInfo(xml);
                 HttpPort = port;
                 DeviceInfo = deviceInfo;
+                ReceiverCapabilities = CreateReceiverCapabilities(deviceInfo, port);
                 State = null;
                 _availableInputs = null;
                 _requiresSequentialAppCommandRequests = false;
@@ -137,6 +155,14 @@ public sealed class DenonAvrClient : IDisposable
                     audioInfoXml,
                     activeSpeakersXml)
             };
+            var capabilities = ReceiverCapabilities;
+            if (capabilities is not null)
+            {
+                ReceiverCapabilities = capabilities with
+                {
+                    SupportsAppCommand0300 = audioInfoXml is not null || activeSpeakersXml is not null
+                };
+            }
         }
         else
         {
@@ -148,9 +174,93 @@ public sealed class DenonAvrClient : IDisposable
 
             State = DenonXmlParser.ParseMainZoneStatus(xml);
             _availableInputs = State.AvailableInputs;
+            var capabilities = ReceiverCapabilities;
+            if (capabilities is not null)
+            {
+                ReceiverCapabilities = capabilities with { SupportsAppCommand0300 = false };
+            }
         }
 
         return State;
+    }
+
+    /// <summary>
+    /// Returns the transports implemented by this library for the specified logical operation.
+    /// This describes the library/protocol layer only; use <see cref="ReceiverCapabilities"/>
+    /// or <see cref="IsFeatureAvailable"/> to inspect the connected hardware as well.
+    /// </summary>
+    public IReadOnlySet<DenonControlProtocol> GetSupportedProtocols(AvrFeature feature) => feature switch
+    {
+        AvrFeature.MainZonePower or
+        AvrFeature.MainZoneVolume or
+        AvrFeature.MainZoneMute or
+        AvrFeature.MainZoneInput => HttpAndTelnet,
+        AvrFeature.MainZoneStatus or
+        AvrFeature.AudioInformation or
+        AvrFeature.ActiveSpeakerStatus => HttpOnly,
+        AvrFeature.Zone2Control or
+        AvrFeature.Zone3Control or
+        AvrFeature.LiveEvents or
+        AvrFeature.SpeakerPresetControl or
+        AvrFeature.SurroundModeControl or
+        AvrFeature.DigitalInputModeControl => TelnetOnly,
+        _ => throw new ArgumentOutOfRangeException(nameof(feature), feature, null)
+    };
+
+    /// <summary>
+    /// Determines whether the detected receiver supports a logical feature. Returns
+    /// <see langword="false"/> before initialization because the hardware is then unknown.
+    /// </summary>
+    public bool IsFeatureAvailable(AvrFeature feature)
+    {
+        var capabilities = ReceiverCapabilities;
+        if (capabilities is null)
+        {
+            return false;
+        }
+
+        return feature switch
+        {
+            AvrFeature.Zone2Control => capabilities.SupportsZone2,
+            AvrFeature.Zone3Control => capabilities.SupportsZone3,
+            AvrFeature.AudioInformation or AvrFeature.ActiveSpeakerStatus =>
+                capabilities.SupportsAppCommand0300 == true,
+            AvrFeature.MainZonePower or
+            AvrFeature.MainZoneVolume or
+            AvrFeature.MainZoneMute or
+            AvrFeature.MainZoneInput or
+            AvrFeature.MainZoneStatus => capabilities.SupportsHttp || capabilities.SupportsTelnet == true,
+            AvrFeature.LiveEvents or
+            AvrFeature.SpeakerPresetControl or
+            AvrFeature.SurroundModeControl or
+            AvrFeature.DigitalInputModeControl => capabilities.SupportsTelnet == true,
+            _ => throw new ArgumentOutOfRangeException(nameof(feature), feature, null)
+        };
+    }
+
+    /// <summary>
+    /// Safely probes the Telnet control port and updates <see cref="ReceiverCapabilities"/>.
+    /// <see cref="InitializeAsync"/> must have succeeded first so HTTP device information is retained.
+    /// </summary>
+    public async Task<DenonReceiverCapabilities> ProbeReceiverCapabilitiesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        var capabilities = ReceiverCapabilities ?? throw new InvalidOperationException(
+            "InitializeAsync muss vor dem Prüfen der Receiver-Fähigkeiten aufgerufen werden.");
+
+        try
+        {
+            _ = await _telnetClient.SendCommandAsync("PW?", cancellationToken).ConfigureAwait(false);
+            ReceiverCapabilities = capabilities with { SupportsTelnet = true };
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
+                                          exception is IOException or SocketException or TaskCanceledException)
+        {
+            ReceiverCapabilities = capabilities with { SupportsTelnet = false };
+        }
+
+        return ReceiverCapabilities;
     }
 
     /// <summary>Refreshes and returns the receiver's currently enabled input list.</summary>
@@ -292,7 +402,7 @@ public sealed class DenonAvrClient : IDisposable
 
     /// <summary>Switches the Main Zone on through the selected transport.</summary>
     public Task PowerOnAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default) =>
-        ExecuteControlAsync(protocol,
+        ExecuteControlAsync(AvrFeature.MainZonePower, protocol,
             token => SendHttpCommandAsync(DenonEndpoints.PowerOn, token),
             token => _telnetClient.PowerOnAsync(token),
             cancellationToken);
@@ -303,7 +413,7 @@ public sealed class DenonAvrClient : IDisposable
 
     /// <summary>Switches the Main Zone to standby through the selected transport.</summary>
     public Task PowerOffAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default) =>
-        ExecuteControlAsync(protocol,
+        ExecuteControlAsync(AvrFeature.MainZonePower, protocol,
             token => SendHttpCommandAsync(DenonEndpoints.PowerStandby, token),
             token => _telnetClient.PowerOffAsync(token),
             cancellationToken);
@@ -314,7 +424,7 @@ public sealed class DenonAvrClient : IDisposable
 
     /// <summary>Raises the Main Zone volume by one receiver step through the selected transport.</summary>
     public Task VolumeUpAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default) =>
-        ExecuteControlAsync(protocol,
+        ExecuteControlAsync(AvrFeature.MainZoneVolume, protocol,
             token => SendHttpCommandAsync(DenonEndpoints.VolumeUp, token),
             token => _telnetClient.VolumeUpAsync(token),
             cancellationToken);
@@ -325,7 +435,7 @@ public sealed class DenonAvrClient : IDisposable
 
     /// <summary>Lowers the Main Zone volume by one receiver step through the selected transport.</summary>
     public Task VolumeDownAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default) =>
-        ExecuteControlAsync(protocol,
+        ExecuteControlAsync(AvrFeature.MainZoneVolume, protocol,
             token => SendHttpCommandAsync(DenonEndpoints.VolumeDown, token),
             token => _telnetClient.VolumeDownAsync(token),
             cancellationToken);
@@ -352,7 +462,7 @@ public sealed class DenonAvrClient : IDisposable
 
         var roundedVolume = Math.Round(volumeDb * 2, MidpointRounding.ToEven) / 2.0;
         var value = roundedVolume.ToString("0.0", CultureInfo.InvariantCulture);
-        return ExecuteControlAsync(protocol,
+        return ExecuteControlAsync(AvrFeature.MainZoneVolume, protocol,
             token => SendHttpCommandAsync(DenonEndpoints.SetVolume(value), token),
             token => _telnetClient.SetVolumeAsync(roundedVolume, token),
             cancellationToken);
@@ -369,7 +479,7 @@ public sealed class DenonAvrClient : IDisposable
         bool muted,
         DenonControlProtocol protocol,
         CancellationToken cancellationToken = default) =>
-        ExecuteControlAsync(protocol,
+        ExecuteControlAsync(AvrFeature.MainZoneMute, protocol,
             token => SendHttpCommandAsync(muted ? DenonEndpoints.MuteOn : DenonEndpoints.MuteOff, token),
             token => _telnetClient.SetMuteAsync(muted, token),
             cancellationToken);
@@ -394,7 +504,7 @@ public sealed class DenonAvrClient : IDisposable
         }
 
         var protocolName = DenonInputSource.ToProtocolName(input.Trim());
-        return ExecuteControlAsync(protocol,
+        return ExecuteControlAsync(AvrFeature.MainZoneInput, protocol,
             token => SendHttpCommandAsync(DenonEndpoints.SetInput(protocolName), token),
             token => _telnetClient.SetInputAsync(input, token),
             cancellationToken);
@@ -444,24 +554,30 @@ public sealed class DenonAvrClient : IDisposable
     }
 
     private async Task ExecuteControlAsync(
+        AvrFeature feature,
         DenonControlProtocol protocol,
         Func<CancellationToken, Task> httpCommand,
         Func<CancellationToken, Task<string>> telnetCommand,
         CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        var supportedProtocols = GetSupportedProtocols(feature);
 
         switch (protocol)
         {
             case DenonControlProtocol.Http:
+                EnsureProtocolSupportsFeature(DenonControlProtocol.Http, feature, supportedProtocols);
                 await httpCommand(cancellationToken).ConfigureAwait(false);
                 return;
             case DenonControlProtocol.Telnet:
+                EnsureProtocolSupportsFeature(DenonControlProtocol.Telnet, feature, supportedProtocols);
                 _ = await telnetCommand(cancellationToken).ConfigureAwait(false);
                 return;
             case DenonControlProtocol.Auto:
-                if (HttpPort is null)
+                var useHttpFirst = HttpPort is not null && supportedProtocols.Contains(DenonControlProtocol.Http);
+                if (!useHttpFirst)
                 {
+                    EnsureProtocolSupportsFeature(DenonControlProtocol.Telnet, feature, supportedProtocols);
                     _ = await telnetCommand(cancellationToken).ConfigureAwait(false);
                     return;
                 }
@@ -472,6 +588,7 @@ public sealed class DenonAvrClient : IDisposable
                 }
                 catch (HttpRequestException) when (!cancellationToken.IsCancellationRequested)
                 {
+                    EnsureProtocolSupportsFeature(DenonControlProtocol.Telnet, feature, supportedProtocols);
                     _ = await telnetCommand(cancellationToken).ConfigureAwait(false);
                 }
 
@@ -479,6 +596,33 @@ public sealed class DenonAvrClient : IDisposable
             default:
                 throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null);
         }
+    }
+
+    private static void EnsureProtocolSupportsFeature(
+        DenonControlProtocol protocol,
+        AvrFeature feature,
+        IReadOnlySet<DenonControlProtocol> supportedProtocols)
+    {
+        if (!supportedProtocols.Contains(protocol))
+        {
+            throw new NotSupportedException(
+                $"{feature} wird über {protocol} von DenonAvrNet nicht unterstützt.");
+        }
+    }
+
+    private static DenonReceiverCapabilities CreateReceiverCapabilities(
+        DenonDeviceInfo deviceInfo,
+        int httpPort)
+    {
+        var zoneCount = deviceInfo.ZoneCount;
+        return new DenonReceiverCapabilities(
+            SupportsHttp: true,
+            SupportsTelnet: null,
+            SupportsAppCommand: httpPort == 8080,
+            SupportsAppCommand0300: null,
+            SupportsZone2: zoneCount is >= 2,
+            SupportsZone3: zoneCount is >= 3,
+            ZoneCount: zoneCount);
     }
 
     private static string NormalizeHost(string host)
