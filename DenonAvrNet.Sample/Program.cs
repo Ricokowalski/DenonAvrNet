@@ -80,7 +80,7 @@ try
                 await RunReadOnlyDiagnosticAsync(receiver, cancellationSource.Token);
                 break;
             case "T":
-                await ShowTelnetZonesAsync(host, cancellationSource.Token);
+                await ControlAdditionalZonesAsync(host, receiver, cancellationSource.Token);
                 break;
             case "0":
             case "Q":
@@ -123,17 +123,62 @@ static void PrintMenu()
         8  Mute ausschalten
         9  Eingang auswählen
         D  Nur-Lese-Diagnose (5 Statusabfragen)
-        T  Telnet: Zone 2/3 abfragen
+        T  Zone 2/3 anzeigen und schalten (Telnet)
         0  Beenden
         """);
     Console.Write("Auswahl: ");
 }
 
-static async Task ShowTelnetZonesAsync(string host, CancellationToken cancellationToken)
+static async Task ControlAdditionalZonesAsync(
+    string host,
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
 {
     var telnet = new DenonTelnetClient(host);
-    Console.WriteLine($"  Zone 2: {await telnet.QueryZone2Async(cancellationToken)}");
-    Console.WriteLine($"  Zone 3: {await telnet.QueryZone3Async(cancellationToken)}");
+
+    // Z2?/Z3? can return the stored source (for example Z3SOURCE). That is
+    // not a power response. The HTTP status snapshot contains both values and
+    // is therefore the authoritative display for the zones.
+    await ShowAdditionalZonesAsync(receiver, cancellationToken);
+
+    Console.Write("Zonenbefehl [2=Z2 ein, 3=Z2 aus, 4=Z3 ein, 5=Z3 aus, Enter=zurück]: ");
+    var choice = Console.ReadLine()?.Trim();
+
+    switch (choice)
+    {
+        case "":
+        case null:
+            return;
+        case "2":
+            await telnet.SetZone2PowerAsync(true, cancellationToken);
+            break;
+        case "3":
+            await telnet.SetZone2PowerAsync(false, cancellationToken);
+            break;
+        case "4":
+            await telnet.SetZone3PowerAsync(true, cancellationToken);
+            break;
+        case "5":
+            await telnet.SetZone3PowerAsync(false, cancellationToken);
+            break;
+        default:
+            Console.WriteLine("Ungültige Auswahl.");
+            return;
+    }
+
+    await Task.Delay(350, cancellationToken);
+    await ShowAdditionalZonesAsync(receiver, cancellationToken);
+}
+
+static async Task ShowAdditionalZonesAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    var state = await receiver.UpdateAsync(cancellationToken);
+
+    Console.WriteLine("\nAktueller Zonenstatus:");
+    ShowAdditionalZone("Zone 2", state.Zone2);
+    ShowAdditionalZone("Zone 3", state.Zone3);
 }
 
 static async Task ExecuteAndRefreshAsync(
