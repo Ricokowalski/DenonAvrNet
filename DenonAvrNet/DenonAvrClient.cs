@@ -201,6 +201,8 @@ public sealed class DenonAvrClient : IDisposable
         AvrFeature.Zone2Control or
         AvrFeature.Zone3Control or
         AvrFeature.LiveEvents or
+        AvrFeature.ChannelLevelRead or
+        AvrFeature.ChannelLevelControl or
         AvrFeature.SpeakerPresetControl or
         AvrFeature.SurroundModeControl or
         AvrFeature.DigitalInputModeControl => TelnetOnly,
@@ -231,6 +233,8 @@ public sealed class DenonAvrClient : IDisposable
             AvrFeature.MainZoneInput or
             AvrFeature.MainZoneStatus => capabilities.SupportsHttp || capabilities.SupportsTelnet == true,
             AvrFeature.LiveEvents or
+            AvrFeature.ChannelLevelRead or
+            AvrFeature.ChannelLevelControl or
             AvrFeature.SpeakerPresetControl or
             AvrFeature.SurroundModeControl or
             AvrFeature.DigitalInputModeControl => capabilities.SupportsTelnet == true,
@@ -508,6 +512,80 @@ public sealed class DenonAvrClient : IDisposable
             token => SendHttpCommandAsync(DenonEndpoints.SetInput(protocolName), token),
             token => _telnetClient.SetInputAsync(input, token),
             cancellationToken);
+
+    /// <summary>Reads one speaker channel level through Telnet.</summary>
+    public Task<DenonSpeakerLevel> GetSpeakerLevelAsync(
+        DenonSpeakerLevelChannel channel,
+        DenonControlProtocol protocol = DenonControlProtocol.Auto,
+        CancellationToken cancellationToken = default) =>
+        ExecuteTelnetFeatureAsync(
+            AvrFeature.ChannelLevelRead,
+            protocol,
+            token => _telnetClient.GetSpeakerLevelAsync(channel, token),
+            cancellationToken);
+
+    /// <summary>Reads all currently configured speaker channel levels through Telnet.</summary>
+    public Task<IReadOnlyList<DenonSpeakerLevel>> GetSpeakerLevelsAsync(
+        DenonControlProtocol protocol = DenonControlProtocol.Auto,
+        CancellationToken cancellationToken = default) =>
+        ExecuteTelnetFeatureAsync(
+            AvrFeature.ChannelLevelRead,
+            protocol,
+            _telnetClient.GetSpeakerLevelsAsync,
+            cancellationToken);
+
+    /// <summary>Sets one speaker channel level through Telnet.</summary>
+    public async Task SetSpeakerLevelAsync(
+        DenonSpeakerLevelChannel channel,
+        double decibels,
+        DenonControlProtocol protocol = DenonControlProtocol.Auto,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ExecuteTelnetFeatureAsync(
+            AvrFeature.ChannelLevelControl,
+            protocol,
+            token => _telnetClient.SetSpeakerLevelAsync(channel, decibels, token),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Raises or lowers one speaker channel level through Telnet.</summary>
+    public async Task ChangeSpeakerLevelAsync(
+        DenonSpeakerLevelChannel channel,
+        bool increase,
+        DenonControlProtocol protocol = DenonControlProtocol.Auto,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ExecuteTelnetFeatureAsync(
+            AvrFeature.ChannelLevelControl,
+            protocol,
+            token => _telnetClient.ChangeSpeakerLevelAsync(channel, increase, token),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Switches one subwoofer channel level off through Telnet.</summary>
+    public async Task SetSpeakerLevelOffAsync(
+        DenonSpeakerLevelChannel channel,
+        DenonControlProtocol protocol = DenonControlProtocol.Auto,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ExecuteTelnetFeatureAsync(
+            AvrFeature.ChannelLevelControl,
+            protocol,
+            token => _telnetClient.SetSpeakerLevelOffAsync(channel, token),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Resets all speaker channel levels to Denon's receiver factory defaults through Telnet.</summary>
+    public async Task ResetSpeakerLevelsToFactoryDefaultsAsync(
+        DenonControlProtocol protocol = DenonControlProtocol.Auto,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ExecuteTelnetFeatureAsync(
+            AvrFeature.ChannelLevelControl,
+            protocol,
+            _telnetClient.ResetSpeakerLevelsToFactoryDefaultsAsync,
+            cancellationToken).ConfigureAwait(false);
+    }
     }
 
     /// <summary>Sends a complete Denon HTTP command path.</summary>
@@ -596,6 +674,31 @@ public sealed class DenonAvrClient : IDisposable
             default:
                 throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null);
         }
+    }
+
+    private Task<T> ExecuteTelnetFeatureAsync<T>(
+        AvrFeature feature,
+        DenonControlProtocol protocol,
+        Func<CancellationToken, Task<T>> telnetCommand,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        EnsureProtocolSupportsFeature(
+            DenonControlProtocol.Telnet,
+            feature,
+            GetSupportedProtocols(feature));
+
+        if (protocol == DenonControlProtocol.Http)
+        {
+            throw new NotSupportedException($"{feature} wird über HTTP von DenonAvrNet nicht unterstützt.");
+        }
+
+        if (protocol is not (DenonControlProtocol.Auto or DenonControlProtocol.Telnet))
+        {
+            throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null);
+        }
+
+        return telnetCommand(cancellationToken);
     }
 
     private static void EnsureProtocolSupportsFeature(

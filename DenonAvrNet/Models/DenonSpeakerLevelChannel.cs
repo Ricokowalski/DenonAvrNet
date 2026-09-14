@@ -1,0 +1,40 @@
+namespace DenonAvrNet.Models;
+
+/// <summary>Identifies exactly one Denon channel-level command target.</summary>
+public enum DenonSpeakerLevelChannel
+{
+    FrontLeft,
+    FrontRight,
+    Center,
+    Subwoofer,
+    Subwoofer2,
+    Subwoofer3,
+    Subwoofer4,
+    SurroundLeft,
+    SurroundRight,
+    SurroundBack,
+    SurroundBackLeft,
+    SurroundBackRight,
+    FrontWideLeft,
+    FrontWideRight,
+    FrontHeightLeft,
+    FrontHeightRight,
+    TopFrontLeft,
+    TopFrontRight,
+    TopMiddleLeft,
+    TopMiddleRight,
+    TopRearLeft,
+    TopRearRight,
+    RearHeightLeft,
+    RearHeightRight,
+    SurroundHeightLeft,
+    SurroundHeightRight,
+    CenterHeight,
+    TopSurround,
+    FrontDolbyLeft,
+    FrontDolbyRight,
+    SurroundDolbyLeft,
+    SurroundDolbyRight,
+    BackDolbyLeft,
+    BackDolbyRight
+}

@@ -41,6 +41,10 @@ der Statusschnittstelle auf Port `80` werden ebenfalls berücksichtigt.
   - Lautstärke erhöhen, verringern oder absolut in dB setzen
   - Mute ein-/ausschalten
   - Eingang auswählen
+- Lautsprecher-Kanalpegel über Telnet lesen und steuern:
+  - einzelne Kanäle sowie alle konfigurierten Kanäle lesen (`CV?` / `CVEND`)
+  - Werte von -12,0 bis +12,0 dB setzen oder schrittweise ändern
+  - Subwoofer-Kanäle auf OFF setzen und alle Kanalpegel auf Denon-Werkswerte zurücksetzen
 - dauerhafte Statusüberwachung für Headless-Betrieb:
   - Telnet-Ereignisse werden sofort empfangen
   - `OPINFASP`-Speaker-Matrizen werden dekodiert und doppelte Telemetrie wird gefiltert

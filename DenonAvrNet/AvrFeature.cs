@@ -14,6 +14,8 @@ public enum AvrFeature
     Zone2Control,
     Zone3Control,
     LiveEvents,
+    ChannelLevelRead,
+    ChannelLevelControl,
     AudioInformation,
     ActiveSpeakerStatus,
     SpeakerPresetControl,

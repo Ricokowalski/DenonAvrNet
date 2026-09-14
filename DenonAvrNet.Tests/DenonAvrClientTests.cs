@@ -29,6 +29,9 @@ public sealed class DenonAvrClientTests
         Assert.Equal(
             new[] { DenonControlProtocol.Telnet },
             client.GetSupportedProtocols(AvrFeature.LiveEvents));
+        Assert.Equal(
+            new[] { DenonControlProtocol.Telnet },
+            client.GetSupportedProtocols(AvrFeature.ChannelLevelControl));
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-# Denon-HTTP/XML-Protokollnotizen
+# Denon-HTTP/XML- und Telnet-Protokollnotizen
 
 Dieses Dokument beschreibt die von `DenonAvrNet` tatsächlich verwendeten
 Protokollteile. Es ist keine vollständige Dokumentation aller Denon-Befehle.
@@ -221,5 +221,33 @@ Soundmodus abgeleitet. `SoundMode` kann trotzdem beispielsweise
 
 Viele Receiver stellen zusätzlich das Denon-IP-Steuerprotokoll auf TCP-Port 23
 bereit. Der AVC-X6800H-Test bestätigte die Erreichbarkeit dieses Ports.
-`DenonAvrNet` verwendet Telnet derzeit jedoch noch nicht; die Angabe dient nur
-der Abgrenzung des aktuellen Funktionsumfangs.
+Die Befehle sind ASCII und enden mit `CR` (`\r`). Abfragen verwenden als
+Parameter `?`; Ereignisse und Antworten verwenden dieselbe Zeilenform wie ein
+Befehl.
+
+`DenonAvrNet` verwendet Telnet für Main-Zone-Steuerung, Zone 2/3,
+Speaker-Presets, Soundmodi, Decoder, Ereignisse und Kanalpegel.
+
+### Kanalpegel: `CV`
+
+Die Kanalpegel liegen zwischen `38` und `62`: `50` entspricht `0,0 dB`;
+`38` entspricht `-12,0 dB`; `62` entspricht `+12,0 dB`. Halbe Dezibelwerte
+verwenden eine dritte Ziffer, etwa `505` für `+0,5 dB`.
+
+| Zweck | Beispiel |
+| --- | --- |
+| Front links lesen | `CVFL?` |
+| Front links auf -1,5 dB setzen | `CVFL 485` |
+| Center um einen Schritt erhöhen | `CVC UP` |
+| alle vorhandenen Kanalpegel lesen | `CV?` |
+| Abschluss der Sammelantwort | `CVEND` |
+| Subwoofer ausschalten | `CVSW 00` |
+| alle Kanalpegel zurücksetzen | `CVZRL` |
+
+Bei `CV?` antwortet der Receiver nur für Kanäle, die in seiner aktuellen
+Lautsprecherkonfiguration vorhanden sind, und beendet die Folge mit `CVEND`.
+Die Library liest deshalb die gesamte Folge auf einer Verbindung und wandelt
+sie in `DenonSpeakerLevel`-Werte um.
+
+Die Befehlscodes entsprechen dem offiziellen Denon-Control-Protocol für
+TCP-Port 23 und dem darin beschriebenen `CV`-Antwortformat.

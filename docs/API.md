@@ -160,7 +160,7 @@ var eventTransport = receiver.GetSupportedProtocols(AvrFeature.LiveEvents);
 | --- | --- |
 | `MainZonePower`, `MainZoneVolume`, `MainZoneMute`, `MainZoneInput` | HTTP und Telnet |
 | `MainZoneStatus`, `AudioInformation`, `ActiveSpeakerStatus` | HTTP |
-| `Zone2Control`, `Zone3Control`, `LiveEvents`, `SpeakerPresetControl`, `SurroundModeControl`, `DigitalInputModeControl` | Telnet |
+| `Zone2Control`, `Zone3Control`, `LiveEvents`, `ChannelLevelRead`, `ChannelLevelControl`, `SpeakerPresetControl`, `SurroundModeControl`, `DigitalInputModeControl` | Telnet |
 
 `DenonReceiverCapabilities` beschreibt dagegen das **erkannte AVR-Modell**.
 Nach `InitializeAsync()` sind HTTP, AppCommand, die Zonenanzahl sowie Zone 2/3
@@ -211,6 +211,51 @@ await zones.SetZone3InputAsync("CBL/SAT");      // sendet Z3SAT/CBL
 
 `SetZone2VolumeAsync()` und `SetZone3VolumeAsync()` akzeptieren Werte von
 `-80,0` bis `+18,0 dB` und runden auf halbe dB-Schritte.
+
+### Lautsprecher-Kanalpegel über Telnet
+
+`DenonTelnetClient` unterstützt Denons `CV`-Befehle für einzelne Kanalpegel.
+`DenonSpeakerLevelChannel` ist absichtlich kein Flags-Enum: Jeder Ausgang –
+auch `Subwoofer`, `Subwoofer2`, `Subwoofer3` und `Subwoofer4` – ist ein eigener
+schreibbarer Zielkanal.
+
+```csharp
+using DenonAvrNet.Models;
+
+var telnet = new DenonTelnetClient("10.37.0.190");
+
+var frontLeft = await telnet.GetSpeakerLevelAsync(DenonSpeakerLevelChannel.FrontLeft);
+await telnet.SetSpeakerLevelAsync(DenonSpeakerLevelChannel.FrontLeft, -1.5);
+await telnet.ChangeSpeakerLevelAsync(DenonSpeakerLevelChannel.Center, increase: true);
+
+var allLevels = await telnet.GetSpeakerLevelsAsync();
+await telnet.SetSpeakerLevelOffAsync(DenonSpeakerLevelChannel.Subwoofer2);
+await telnet.ResetSpeakerLevelsToFactoryDefaultsAsync();
+```
+
+Dieselben Funktionen sind über die gemeinsame Fassade verfügbar. Da die
+Library hierfür derzeit nur Telnet implementiert, verwendet `Auto` unmittelbar
+Telnet; `DenonControlProtocol.Http` löst eine `NotSupportedException` aus.
+
+```csharp
+var levels = await receiver.GetSpeakerLevelsAsync();
+await receiver.SetSpeakerLevelAsync(
+    DenonSpeakerLevelChannel.TopFrontLeft,
+    1.0,
+    DenonControlProtocol.Telnet);
+```
+
+`GetSpeakerLevelsAsync()` fragt `CV?` ab und wartet auf die Abschlussmeldung
+`CVEND`. Es liefert nur Kanäle zurück, die in der aktuellen Lautsprecher-
+Konfiguration des Receivers vorhanden sind. `SetSpeakerLevelAsync()` akzeptiert
+`-12,0` bis `+12,0 dB` und rundet auf 0,5-dB-Schritte. Ein Pegel `OFF` ist nur
+für Subwoofer-Kanäle zulässig. `ResetSpeakerLevelsToFactoryDefaultsAsync()`
+setzt die Pegel auf Denon-Werkswerte zurück; die Library speichert oder stellt
+keinen vorherigen Sitzungssnapshot wieder her.
+
+Weitere lesende Telnet-Abfragen sind verfügbar über `QueryPowerAsync()`,
+`QueryVolumeAsync()`, `QueryMuteAsync()`, `QueryInputAsync()`,
+`QuerySurroundModeAsync()` und `QueryDigitalInputModeAsync()`.
 
 ### `DenonReceiverMonitor` – Ereignisse und Rückfall-Polling
 
@@ -418,6 +463,15 @@ Diese Methode prüft nicht, ob der Receiver den übergebenen Befehl unterstützt
 | `SupportsAppCommand0300` | `bool?` | Ergebnis der erweiterten Audioabfrage; vor `UpdateAsync()` `null` |
 | `SupportsZone2`, `SupportsZone3` | `bool` | aus der vom Receiver gemeldeten Zonenanzahl abgeleitet |
 | `ZoneCount` | `int?` | vom Receiver gemeldete Zonenanzahl |
+
+## `DenonSpeakerLevel`
+
+| Eigenschaft | Typ | Beschreibung |
+| --- | --- | --- |
+| `Channel` | `DenonSpeakerLevelChannel` | exakt angesprochener Denon-CV-Kanal |
+| `Decibels` | `double?` | Kanalpegel; bei `OFF` `null` |
+| `IsOff` | `bool` | gibt an, ob der Receiver den Kanal mit `00`/`OFF` gemeldet hat |
+| `RawResponse` | `string` | originale Telnet-Antwort, z. B. `CVFL 505` |
 
 ## `DenonDeviceInfo`
 
