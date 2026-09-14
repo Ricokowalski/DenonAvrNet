@@ -84,6 +84,42 @@ public sealed class DenonTelnetClient
     public Task<string> QueryZone3Async(CancellationToken cancellationToken = default) =>
         SendCommandAsync("Z3?", cancellationToken);
 
+    /// <summary>Switches the Main Zone on.</summary>
+    public Task<string> PowerOnAsync(CancellationToken cancellationToken = default) =>
+        SendCommandAsync("PWON", cancellationToken);
+
+    /// <summary>Switches the Main Zone to standby.</summary>
+    public Task<string> PowerOffAsync(CancellationToken cancellationToken = default) =>
+        SendCommandAsync("PWOFF", cancellationToken);
+
+    /// <summary>Raises the Main Zone volume by one receiver step.</summary>
+    public Task<string> VolumeUpAsync(CancellationToken cancellationToken = default) =>
+        SendCommandAsync("MVUP", cancellationToken);
+
+    /// <summary>Lowers the Main Zone volume by one receiver step.</summary>
+    public Task<string> VolumeDownAsync(CancellationToken cancellationToken = default) =>
+        SendCommandAsync("MVDOWN", cancellationToken);
+
+    /// <summary>Sets Main Zone volume from -80.0 through +18.0 dB.</summary>
+    public Task<string> SetVolumeAsync(double volumeDb, CancellationToken cancellationToken = default) =>
+        SendCommandAsync($"MV{ToTelnetVolumeValue(volumeDb)}", cancellationToken);
+
+    /// <summary>Enables or disables Main Zone muting.</summary>
+    public Task<string> SetMuteAsync(bool muted, CancellationToken cancellationToken = default) =>
+        SendCommandAsync(muted ? "MUON" : "MUOFF", cancellationToken);
+
+    /// <summary>Selects a Main Zone input using a display or Denon protocol name.</summary>
+    public Task<string> SetInputAsync(string input, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(input);
+        if (input.Contains('\r') || input.Contains('\n'))
+        {
+            throw new ArgumentException("Der Eingangsname darf keinen Zeilenumbruch enthalten.", nameof(input));
+        }
+
+        return SendCommandAsync($"SI{DenonInputSource.ToProtocolName(input.Trim())}", cancellationToken);
+    }
+
     /// <summary>Switches Zone 2 on or off.</summary>
     public Task<string> SetZone2PowerAsync(bool on, CancellationToken cancellationToken = default) =>
         SendCommandAsync(on ? "Z2ON" : "Z2OFF", cancellationToken);

@@ -47,6 +47,7 @@ der Statusschnittstelle auf Port `80` werden ebenfalls berücksichtigt.
   - automatisches Wiederverbinden nach einer Telnet-Unterbrechung
   - HTTP-Statusabfrage alle 15 Sekunden als Rückfallebene
 - beliebige rohe Denon-HTTP-Befehlspfade senden
+- gemeinsame Main-Zone-Steuerung über HTTP oder Telnet mit automatischer Auswahl
 - Unterstützung von `CancellationToken`
 
 ## Voraussetzungen
@@ -110,6 +111,28 @@ await receiver.SetMuteAsync(true);
 await receiver.SetMuteAsync(false);
 await receiver.SetInputAsync("Media Player");
 ```
+
+## Gemeinsame HTTP-/Telnet-Steuerung
+
+Die normalen Main-Zone-Methoden (`PowerOnAsync`, `SetVolumeAsync`, `SetMuteAsync`,
+`SetInputAsync` usw.) bilden nun eine gemeinsame API. Sie haben keinen doppelten
+HTTP- und Telnet-Namen mehr. Die Auswahl ist über `DenonControlProtocol` steuerbar:
+
+```csharp
+// Standard: Auto. Nach InitializeAsync wird HTTP verwendet; ohne HTTP-Initialisierung Telnet.
+await receiver.SetVolumeAsync(-25.0);
+
+// Einen einzelnen Befehl ausdrücklich über Telnet senden:
+await receiver.SetInputAsync("CBL/SAT", DenonControlProtocol.Telnet);
+
+// Für eine Anwendung dauerhaft Telnet bevorzugen (z. B. AVR-X4100W):
+receiver.PreferredControlProtocol = DenonControlProtocol.Telnet;
+```
+
+Bei `Auto` wird nach erfolgreicher HTTP-Initialisierung zunächst HTTP verwendet.
+Antwortet der HTTP-Steuerbefehl mit einem Netzwerk-/HTTP-Fehler wie `403`, versucht
+die Bibliothek Telnet. Wird explizit `Http` oder `Telnet` gewählt, gibt es keinen
+Fallback – das macht Diagnose und vorhersehbares Verhalten möglich.
 
 Ein Steuerbefehl verändert `receiver.State` nicht vorab. Für einen vom Gerät
 bestätigten Zustand muss anschließend erneut abgefragt werden:

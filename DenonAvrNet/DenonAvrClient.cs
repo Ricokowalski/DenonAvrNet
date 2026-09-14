@@ -10,6 +10,7 @@ namespace DenonAvrNet;
 public sealed class DenonAvrClient : IDisposable
 {
     private readonly DenonHttpTransport _httpTransport;
+    private readonly DenonTelnetClient _telnetClient;
     private readonly bool _ownsTransport;
     private IReadOnlyList<string>? _availableInputs;
     private bool _requiresSequentialAppCommandRequests;
@@ -24,6 +25,7 @@ public sealed class DenonAvrClient : IDisposable
 
         Host = NormalizeHost(host);
         _httpTransport = new DenonHttpTransport(requestTimeout ?? TimeSpan.FromSeconds(5));
+        _telnetClient = new DenonTelnetClient(Host, requestTimeout);
         _ownsTransport = true;
     }
 
@@ -33,10 +35,17 @@ public sealed class DenonAvrClient : IDisposable
 
         Host = NormalizeHost(host);
         _httpTransport = httpTransport ?? throw new ArgumentNullException(nameof(httpTransport));
+        _telnetClient = new DenonTelnetClient(Host);
     }
 
     /// <summary>Gets the normalized receiver hostname or IP address.</summary>
     public string Host { get; }
+
+    /// <summary>
+    /// Gets or sets the default transport for control methods. The default <see cref="DenonControlProtocol.Auto"/>
+    /// retains HTTP control after initialization and makes Telnet-only receivers usable without HTTP initialization.
+    /// </summary>
+    public DenonControlProtocol PreferredControlProtocol { get; set; } = DenonControlProtocol.Auto;
 
     /// <summary>Gets the HTTP port detected by <see cref="InitializeAsync"/>.</summary>
     public int? HttpPort { get; private set; }
@@ -277,26 +286,61 @@ public sealed class DenonAvrClient : IDisposable
         }
     }
 
-    /// <summary>Switches the Main Zone on.</summary>
+    /// <summary>Switches the Main Zone on using <see cref="PreferredControlProtocol"/>.</summary>
     public Task PowerOnAsync(CancellationToken cancellationToken = default) =>
-        SendCommandAsync(DenonEndpoints.PowerOn, cancellationToken);
+        PowerOnAsync(PreferredControlProtocol, cancellationToken);
 
-    /// <summary>Switches the Main Zone to standby.</summary>
+    /// <summary>Switches the Main Zone on through the selected transport.</summary>
+    public Task PowerOnAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default) =>
+        ExecuteControlAsync(protocol,
+            token => SendHttpCommandAsync(DenonEndpoints.PowerOn, token),
+            token => _telnetClient.PowerOnAsync(token),
+            cancellationToken);
+
+    /// <summary>Switches the Main Zone to standby using <see cref="PreferredControlProtocol"/>.</summary>
     public Task PowerOffAsync(CancellationToken cancellationToken = default) =>
-        SendCommandAsync(DenonEndpoints.PowerStandby, cancellationToken);
+        PowerOffAsync(PreferredControlProtocol, cancellationToken);
 
-    /// <summary>Raises the Main Zone volume by one receiver step.</summary>
+    /// <summary>Switches the Main Zone to standby through the selected transport.</summary>
+    public Task PowerOffAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default) =>
+        ExecuteControlAsync(protocol,
+            token => SendHttpCommandAsync(DenonEndpoints.PowerStandby, token),
+            token => _telnetClient.PowerOffAsync(token),
+            cancellationToken);
+
+    /// <summary>Raises the Main Zone volume by one receiver step using <see cref="PreferredControlProtocol"/>.</summary>
     public Task VolumeUpAsync(CancellationToken cancellationToken = default) =>
-        SendCommandAsync(DenonEndpoints.VolumeUp, cancellationToken);
+        VolumeUpAsync(PreferredControlProtocol, cancellationToken);
 
-    /// <summary>Lowers the Main Zone volume by one receiver step.</summary>
+    /// <summary>Raises the Main Zone volume by one receiver step through the selected transport.</summary>
+    public Task VolumeUpAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default) =>
+        ExecuteControlAsync(protocol,
+            token => SendHttpCommandAsync(DenonEndpoints.VolumeUp, token),
+            token => _telnetClient.VolumeUpAsync(token),
+            cancellationToken);
+
+    /// <summary>Lowers the Main Zone volume by one receiver step using <see cref="PreferredControlProtocol"/>.</summary>
     public Task VolumeDownAsync(CancellationToken cancellationToken = default) =>
-        SendCommandAsync(DenonEndpoints.VolumeDown, cancellationToken);
+        VolumeDownAsync(PreferredControlProtocol, cancellationToken);
+
+    /// <summary>Lowers the Main Zone volume by one receiver step through the selected transport.</summary>
+    public Task VolumeDownAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default) =>
+        ExecuteControlAsync(protocol,
+            token => SendHttpCommandAsync(DenonEndpoints.VolumeDown, token),
+            token => _telnetClient.VolumeDownAsync(token),
+            cancellationToken);
 
     /// <summary>Sets the Main Zone volume, rounded to a half-decibel step.</summary>
     /// <param name="volumeDb">Volume from -80.0 through +18.0 dB.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
-    public Task SetVolumeAsync(double volumeDb, CancellationToken cancellationToken = default)
+    public Task SetVolumeAsync(double volumeDb, CancellationToken cancellationToken = default) =>
+        SetVolumeAsync(volumeDb, PreferredControlProtocol, cancellationToken);
+
+    /// <summary>Sets Main Zone volume through the selected transport, rounded to a half-decibel step.</summary>
+    public Task SetVolumeAsync(
+        double volumeDb,
+        DenonControlProtocol protocol,
+        CancellationToken cancellationToken = default)
     {
         if (volumeDb is < -80.0 or > 18.0)
         {
@@ -308,19 +352,39 @@ public sealed class DenonAvrClient : IDisposable
 
         var roundedVolume = Math.Round(volumeDb * 2, MidpointRounding.ToEven) / 2.0;
         var value = roundedVolume.ToString("0.0", CultureInfo.InvariantCulture);
-        return SendCommandAsync(DenonEndpoints.SetVolume(value), cancellationToken);
+        return ExecuteControlAsync(protocol,
+            token => SendHttpCommandAsync(DenonEndpoints.SetVolume(value), token),
+            token => _telnetClient.SetVolumeAsync(roundedVolume, token),
+            cancellationToken);
     }
 
     /// <summary>Enables or disables Main Zone muting.</summary>
     /// <param name="muted"><see langword="true"/> to mute; otherwise <see langword="false"/>.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
     public Task SetMuteAsync(bool muted, CancellationToken cancellationToken = default) =>
-        SendCommandAsync(muted ? DenonEndpoints.MuteOn : DenonEndpoints.MuteOff, cancellationToken);
+        SetMuteAsync(muted, PreferredControlProtocol, cancellationToken);
+
+    /// <summary>Enables or disables Main Zone muting through the selected transport.</summary>
+    public Task SetMuteAsync(
+        bool muted,
+        DenonControlProtocol protocol,
+        CancellationToken cancellationToken = default) =>
+        ExecuteControlAsync(protocol,
+            token => SendHttpCommandAsync(muted ? DenonEndpoints.MuteOn : DenonEndpoints.MuteOff, token),
+            token => _telnetClient.SetMuteAsync(muted, token),
+            cancellationToken);
 
     /// <summary>Selects a Main Zone input using a display or Denon protocol name.</summary>
     /// <param name="input">Input such as <c>CBL/SAT</c>, <c>Media Player</c> or <c>MPLAY</c>.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
-    public Task SetInputAsync(string input, CancellationToken cancellationToken = default)
+    public Task SetInputAsync(string input, CancellationToken cancellationToken = default) =>
+        SetInputAsync(input, PreferredControlProtocol, cancellationToken);
+
+    /// <summary>Selects a Main Zone input through the selected transport.</summary>
+    public Task SetInputAsync(
+        string input,
+        DenonControlProtocol protocol,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(input);
 
@@ -330,7 +394,10 @@ public sealed class DenonAvrClient : IDisposable
         }
 
         var protocolName = DenonInputSource.ToProtocolName(input.Trim());
-        return SendCommandAsync(DenonEndpoints.SetInput(protocolName), cancellationToken);
+        return ExecuteControlAsync(protocol,
+            token => SendHttpCommandAsync(DenonEndpoints.SetInput(protocolName), token),
+            token => _telnetClient.SetInputAsync(input, token),
+            cancellationToken);
     }
 
     /// <summary>Sends a complete Denon HTTP command path.</summary>
@@ -341,13 +408,7 @@ public sealed class DenonAvrClient : IDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(commandPath);
-        var port = GetInitializedPort();
-
-        _ = await _httpTransport.GetStringAsync(
-            Host,
-            port,
-            commandPath,
-            cancellationToken).ConfigureAwait(false);
+        await SendHttpCommandAsync(commandPath, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -374,6 +435,51 @@ public sealed class DenonAvrClient : IDisposable
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+
+    private async Task SendHttpCommandAsync(string commandPath, CancellationToken cancellationToken)
+    {
+        var port = GetInitializedPort();
+        _ = await _httpTransport.GetStringAsync(Host, port, commandPath, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task ExecuteControlAsync(
+        DenonControlProtocol protocol,
+        Func<CancellationToken, Task> httpCommand,
+        Func<CancellationToken, Task<string>> telnetCommand,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+
+        switch (protocol)
+        {
+            case DenonControlProtocol.Http:
+                await httpCommand(cancellationToken).ConfigureAwait(false);
+                return;
+            case DenonControlProtocol.Telnet:
+                _ = await telnetCommand(cancellationToken).ConfigureAwait(false);
+                return;
+            case DenonControlProtocol.Auto:
+                if (HttpPort is null)
+                {
+                    _ = await telnetCommand(cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                try
+                {
+                    await httpCommand(cancellationToken).ConfigureAwait(false);
+                }
+                catch (HttpRequestException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    _ = await telnetCommand(cancellationToken).ConfigureAwait(false);
+                }
+
+                return;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null);
+        }
+    }
 
     private static string NormalizeHost(string host)
     {
