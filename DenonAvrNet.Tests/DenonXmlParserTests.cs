@@ -48,6 +48,12 @@ public sealed class DenonXmlParserTests
         Assert.True(result.IsPoweredOn);
         Assert.Equal("ON", result.Power);
         Assert.Equal("MPLAY", result.Input);
+        Assert.NotNull(result.Zone2);
+        Assert.Equal("OFF", result.Zone2.Power);
+        Assert.Equal(-40, result.Zone2.VolumeDb);
+        Assert.Equal("SOURCE", result.Zone2.Input);
+        Assert.NotNull(result.Zone3);
+        Assert.Equal("OFF", result.Zone3.Power);
         Assert.Equal(-35.5, result.VolumeDb);
         Assert.False(result.IsMuted);
         Assert.Equal(

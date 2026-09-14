@@ -17,6 +17,7 @@ der Statusschnittstelle auf Port `80` werden ebenfalls berücksichtigt.
   - Master-Lautstärke
   - Mute
   - verfügbare Eingänge
+- lesender Status für Zone 2 und Zone 3 (Power, Eingang, Lautstärke, Mute)
 - zwischengespeicherte Eingangsliste mit gezielter Aktualisierung
 - automatische Kompatibilitätsumschaltung bei unvollständigen gebündelten
   AppCommand-Antworten
@@ -146,6 +147,7 @@ Snapshot in `receiver.State`.
 | `IsMuted` | Mute-Status oder `null` |
 | `AvailableInputs` | nicht deaktivierte Standardeingänge |
 | `Audio` | optionale erweiterte Audioinformationen |
+| `Zone2`, `Zone3` | optionale Status-Snapshots der zusätzlichen Zonen |
 
 `DenonAudioInfo` enthält:
 
@@ -241,8 +243,7 @@ Weitere Details stehen in der [API-Dokumentation](docs/API.md), den
 ## Aktuelle Grenzen
 
 - Der Schwerpunkt liegt derzeit auf der Main Zone.
-- Zone 2 und Zone 3 werden erkannt, aber noch nicht als eigene Zustands- und
-  Steuerobjekte angeboten.
+- Zone 2 und Zone 3 werden gelesen, aber noch nicht gesteuert.
 - Umbenannte Eingänge werden noch nicht separat auf ihre benutzerdefinierten
   Anzeigenamen abgebildet.
 - Telnet-Port 23 wird noch nicht als Transport verwendet.

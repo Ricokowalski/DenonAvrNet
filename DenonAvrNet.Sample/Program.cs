@@ -150,6 +150,16 @@ static async Task ShowStatusAsync(
     Console.WriteLine($"  Soundmodus:  {state.Audio?.SoundMode ?? "unbekannt"}");
     Console.WriteLine($"  Samplerate:  {state.Audio?.SampleRate ?? "unbekannt"}");
     Console.WriteLine($"  Lautsprecher:{FormatSpeakers(state.Audio?.ActiveSpeakers)}");
+    ShowAdditionalZone("Zone 2", state.Zone2);
+    ShowAdditionalZone("Zone 3", state.Zone3);
+}
+
+static void ShowAdditionalZone(string name, DenonAvrNet.Models.DenonZoneState? zone)
+{
+    if (zone is not null)
+    {
+        Console.WriteLine($"  {name}:       {zone.Power}, {zone.Input ?? "unbekannt"}, {FormatVolume(zone.VolumeDb)}, Mute {FormatMute(zone.IsMuted)}");
+    }
 }
 
 static async Task SetVolumeAsync(

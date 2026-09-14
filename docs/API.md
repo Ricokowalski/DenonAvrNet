@@ -107,6 +107,11 @@ erweiterten Audioinformationen normalerweise nicht zur Verfügung.
 Die Requests werden nicht parallel ausgeführt. Dadurch werden Firmwareprobleme
 mit gleichzeitig eintreffenden AppCommand-Anfragen vermieden.
 
+Der Status-Snapshot enthält bei Receivern mit weiteren Zonen zusätzlich `Zone2`
+und `Zone3`. Jeder dieser optionalen `DenonZoneState`-Werte enthält Power,
+Eingang, Lautstärke und Mute. Steuerbefehle für diese Zonen sind noch nicht Teil
+der öffentlichen API.
+
 ### `RefreshInputsAsync`
 
 ```csharp

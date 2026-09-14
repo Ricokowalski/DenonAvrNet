@@ -213,33 +213,42 @@ internal static class DenonXmlParser
         XElement? sourceCommand,
         IReadOnlyList<string> availableInputs)
     {
-        var power = powerCommand is null
-            ? null
-            : Value(powerCommand, "zone1");
-        var volume = volumeCommand is null
-            ? null
-            : NestedValue(volumeCommand, "zone1", "volume");
-        var mute = muteCommand is null
-            ? null
-            : Value(muteCommand, "zone1");
-        var input = sourceCommand is null
-            ? null
-            : NestedValue(sourceCommand, "zone1", "source");
+        var mainZone = CreateZoneState(powerCommand, volumeCommand, muteCommand, sourceCommand, "zone1");
 
-        if (power is null && volume is null && mute is null && input is null)
+        if (mainZone is null)
         {
             throw new DenonProtocolException(
                 "Die AppCommand-Antworten enthalten keine auswertbaren Main-Zone-Statuswerte.");
         }
 
-        var normalizedPower = power ?? "UNKNOWN";
         return new DenonReceiverState(
-            normalizedPower.Equals("ON", StringComparison.OrdinalIgnoreCase),
-            normalizedPower,
-            input,
-            ParseNullableDouble(volume),
-            ParseNullableBoolean(mute),
-            availableInputs);
+            mainZone.IsPoweredOn,
+            mainZone.Power,
+            mainZone.Input,
+            mainZone.VolumeDb,
+            mainZone.IsMuted,
+            availableInputs,
+            Zone2: CreateZoneState(powerCommand, volumeCommand, muteCommand, sourceCommand, "zone2"),
+            Zone3: CreateZoneState(powerCommand, volumeCommand, muteCommand, sourceCommand, "zone3"));
+    }
+
+    private static DenonZoneState? CreateZoneState(
+        XElement? powerCommand, XElement? volumeCommand, XElement? muteCommand,
+        XElement? sourceCommand, string zoneName)
+    {
+        var power = powerCommand is null ? null : Value(powerCommand, zoneName);
+        var volume = volumeCommand is null ? null : NestedValue(volumeCommand, zoneName, "volume");
+        var mute = muteCommand is null ? null : Value(muteCommand, zoneName);
+        var input = sourceCommand is null ? null : NestedValue(sourceCommand, zoneName, "source");
+        if (power is null && volume is null && mute is null && input is null)
+        {
+            return null;
+        }
+
+        var normalizedPower = power ?? "UNKNOWN";
+        return new DenonZoneState(
+            normalizedPower.Equals("ON", StringComparison.OrdinalIgnoreCase), normalizedPower,
+            input, ParseNullableDouble(volume), ParseNullableBoolean(mute));
     }
 
     private static string? ParameterValue(XElement? command, string parameterName)

@@ -8,4 +8,6 @@ public sealed record DenonReceiverState(
     double? VolumeDb,
     bool? IsMuted,
     IReadOnlyList<string> AvailableInputs,
-    DenonAudioInfo? Audio = null);
+    DenonAudioInfo? Audio = null,
+    DenonZoneState? Zone2 = null,
+    DenonZoneState? Zone3 = null);
