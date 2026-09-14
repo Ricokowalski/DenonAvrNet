@@ -56,7 +56,11 @@ internal sealed class DenonHttpTransport : IDisposable
         ArgumentNullException.ThrowIfNull(xml);
 
         var requestUri = BuildUri(host, port, path);
-        using var content = new StringContent(xml, Encoding.UTF8, "text/xml");
+        using var content = new ByteArrayContent(Encoding.UTF8.GetBytes(xml));
+        content.Headers.ContentType = new MediaTypeHeaderValue("text/xml")
+        {
+            CharSet = "utf-8"
+        };
         using var response = await _httpClient.PostAsync(
             requestUri,
             content,

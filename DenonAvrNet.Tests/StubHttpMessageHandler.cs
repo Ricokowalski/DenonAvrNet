@@ -14,6 +14,8 @@ internal sealed class StubHttpMessageHandler(
 
     internal List<string?> RequestContentTypes { get; } = [];
 
+    internal List<string?> RequestContentCharsets { get; } = [];
+
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)
@@ -25,6 +27,7 @@ internal sealed class StubHttpMessageHandler(
             ? null
             : await request.Content.ReadAsStringAsync(cancellationToken));
         RequestContentTypes.Add(request.Content?.Headers.ContentType?.MediaType);
+        RequestContentCharsets.Add(request.Content?.Headers.ContentType?.CharSet);
         return responseFactory(request, cancellationToken);
     }
 

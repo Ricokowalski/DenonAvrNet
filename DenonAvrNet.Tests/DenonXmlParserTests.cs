@@ -36,7 +36,12 @@ public sealed class DenonXmlParserTests
     [Fact]
     public void ParseAppCommandMainZoneStatus_ReadsExpectedValues()
     {
-        var result = DenonXmlParser.ParseAppCommandMainZoneStatus(TestXml.AppCommandMainZoneStatus);
+        var result = DenonXmlParser.ParseAppCommandMainZoneStatus(
+            TestXml.AppCommandPower,
+            TestXml.AppCommandVolume,
+            TestXml.AppCommandMute,
+            TestXml.AppCommandSource,
+            TestXml.AppCommandDeletedSources);
 
         Assert.True(result.IsPoweredOn);
         Assert.Equal("ON", result.Power);
@@ -46,6 +51,22 @@ public sealed class DenonXmlParserTests
         Assert.Equal(
             new[] { "CBL/SAT", "Media Player", "PHONO" },
             result.AvailableInputs);
+    }
+
+    [Fact]
+    public void ParseAppCommandMainZoneStatus_ToleratesOneUnsupportedCommand()
+    {
+        var result = DenonXmlParser.ParseAppCommandMainZoneStatus(
+            TestXml.AppCommandPower,
+            TestXml.AppCommandError,
+            TestXml.AppCommandMute,
+            TestXml.AppCommandSource,
+            TestXml.AppCommandDeletedSources);
+
+        Assert.Equal("ON", result.Power);
+        Assert.Null(result.VolumeDb);
+        Assert.False(result.IsMuted);
+        Assert.Equal("MPLAY", result.Input);
     }
 
     [Fact]

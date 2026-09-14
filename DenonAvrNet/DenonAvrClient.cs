@@ -78,15 +78,35 @@ public sealed class DenonAvrClient : IDisposable
 
         if (port == 8080)
         {
-            var request = DenonAppCommand.CreateMainZoneStatusRequest();
-            var xml = await _httpTransport.PostXmlAsync(
-                Host,
+            // Keep AppCommand calls sequential. Some receiver firmware does not
+            // reliably return every result from bundled or concurrent queries.
+            var powerXml = await QueryAppCommandAsync(
                 port,
-                DenonEndpoints.AppCommand,
-                request,
+                DenonAppCommand.GetAllZonePowerStatus,
+                cancellationToken).ConfigureAwait(false);
+            var volumeXml = await QueryAppCommandAsync(
+                port,
+                DenonAppCommand.GetAllZoneVolume,
+                cancellationToken).ConfigureAwait(false);
+            var muteXml = await QueryAppCommandAsync(
+                port,
+                DenonAppCommand.GetAllZoneMuteStatus,
+                cancellationToken).ConfigureAwait(false);
+            var sourceXml = await QueryAppCommandAsync(
+                port,
+                DenonAppCommand.GetAllZoneSource,
+                cancellationToken).ConfigureAwait(false);
+            var deletedSourcesXml = await QueryAppCommandAsync(
+                port,
+                DenonAppCommand.GetDeletedSource,
                 cancellationToken).ConfigureAwait(false);
 
-            State = DenonXmlParser.ParseAppCommandMainZoneStatus(xml);
+            State = DenonXmlParser.ParseAppCommandMainZoneStatus(
+                powerXml,
+                volumeXml,
+                muteXml,
+                sourceXml,
+                deletedSourcesXml);
         }
         else
         {
@@ -101,6 +121,17 @@ public sealed class DenonAvrClient : IDisposable
 
         return State;
     }
+
+    private Task<string> QueryAppCommandAsync(
+        int port,
+        string command,
+        CancellationToken cancellationToken) =>
+        _httpTransport.PostXmlAsync(
+            Host,
+            port,
+            DenonEndpoints.AppCommand,
+            DenonAppCommand.CreateRequest(command),
+            cancellationToken);
 
     public Task PowerOnAsync(CancellationToken cancellationToken = default) =>
         SendCommandAsync(DenonEndpoints.PowerOn, cancellationToken);

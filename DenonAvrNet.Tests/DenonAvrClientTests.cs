@@ -40,6 +40,14 @@ public sealed class DenonAvrClientTests
     [Fact]
     public async Task UpdateAsync_UsesAppCommandPostOnPort8080()
     {
+        var responses = new Queue<string>(
+        [
+            TestXml.AppCommandPower,
+            TestXml.AppCommandVolume,
+            TestXml.AppCommandMute,
+            TestXml.AppCommandSource,
+            TestXml.AppCommandDeletedSources
+        ]);
         var handler = new StubHttpMessageHandler((request, _) =>
             request.RequestUri!.Port == 80
                 ? new HttpResponseMessage(HttpStatusCode.NotFound)
@@ -47,7 +55,7 @@ public sealed class DenonAvrClientTests
                 {
                     "/goform/Deviceinfo.xml" => StubHttpMessageHandler.Xml(TestXml.DeviceInfo),
                     "/goform/AppCommand.xml" =>
-                        StubHttpMessageHandler.Xml(TestXml.AppCommandMainZoneStatus),
+                        StubHttpMessageHandler.Xml(responses.Dequeue()),
                     _ => new HttpResponseMessage(HttpStatusCode.Forbidden)
                 });
         using var transport = new DenonHttpTransport(handler, TimeSpan.FromSeconds(1));
@@ -56,10 +64,27 @@ public sealed class DenonAvrClientTests
 
         var state = await client.UpdateAsync();
 
-        Assert.Equal(HttpMethod.Post, handler.RequestMethods[^1]);
-        Assert.Equal("/goform/AppCommand.xml", handler.RequestedUris[^1].AbsolutePath);
-        Assert.Equal("text/xml", handler.RequestContentTypes[^1]);
-        Assert.Contains("GetAllZonePowerStatus", handler.RequestBodies[^1]);
+        Assert.All(handler.RequestMethods.TakeLast(5), method => Assert.Equal(HttpMethod.Post, method));
+        Assert.All(
+            handler.RequestedUris.TakeLast(5),
+            uri => Assert.Equal("/goform/AppCommand.xml", uri.AbsolutePath));
+        Assert.All(
+            handler.RequestContentTypes.TakeLast(5),
+            type => Assert.Equal("text/xml", type));
+        Assert.All(
+            handler.RequestContentCharsets.TakeLast(5),
+            charset => Assert.Equal("utf-8", charset));
+        Assert.All(
+            handler.RequestBodies.TakeLast(5),
+            body => Assert.StartsWith(
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<tx>",
+                body));
+        Assert.Contains("GetAllZonePowerStatus", handler.RequestBodies[^5]);
+        Assert.Contains("GetAllZoneVolume", handler.RequestBodies[^4]);
+        Assert.Contains("GetAllZoneMuteStatus", handler.RequestBodies[^3]);
+        Assert.Contains("GetAllZoneSource", handler.RequestBodies[^2]);
+        Assert.Contains("GetDeletedSource", handler.RequestBodies[^1]);
+        Assert.Empty(responses);
         Assert.Equal(-35.5, state.VolumeDb);
     }
 

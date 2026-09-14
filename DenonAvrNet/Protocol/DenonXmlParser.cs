@@ -59,7 +59,53 @@ internal static class DenonXmlParser
             inputs);
     }
 
-    internal static DenonReceiverState ParseAppCommandMainZoneStatus(string xml)
+    internal static DenonReceiverState ParseAppCommandMainZoneStatus(
+        string powerXml,
+        string volumeXml,
+        string muteXml,
+        string sourceXml,
+        string deletedSourcesXml)
+    {
+        var powerCommand = ParseAppCommandResponse(powerXml);
+        var volumeCommand = ParseAppCommandResponse(volumeXml);
+        var muteCommand = ParseAppCommandResponse(muteXml);
+        var sourceCommand = ParseAppCommandResponse(sourceXml);
+        var deletedSourcesCommand = ParseAppCommandResponse(deletedSourcesXml);
+
+        var power = powerCommand is null
+            ? null
+            : Value(powerCommand, "zone1");
+        var volume = volumeCommand is null
+            ? null
+            : NestedValue(volumeCommand, "zone1", "volume");
+        var mute = muteCommand is null
+            ? null
+            : Value(muteCommand, "zone1");
+        var input = sourceCommand is null
+            ? null
+            : NestedValue(sourceCommand, "zone1", "source");
+
+        if (power is null && volume is null && mute is null && input is null)
+        {
+            throw new DenonProtocolException(
+                "Die AppCommand-Antworten enthalten keine auswertbaren Main-Zone-Statuswerte.");
+        }
+
+        var inputs = deletedSourcesCommand is null
+            ? []
+            : ParseAvailableInputs(deletedSourcesCommand);
+        var normalizedPower = power ?? "UNKNOWN";
+
+        return new DenonReceiverState(
+            normalizedPower.Equals("ON", StringComparison.OrdinalIgnoreCase),
+            normalizedPower,
+            input,
+            ParseNullableDouble(volume),
+            ParseNullableBoolean(mute),
+            inputs);
+    }
+
+    private static XElement? ParseAppCommandResponse(string xml)
     {
         var root = ParseSecurely(xml).Root;
 
@@ -68,27 +114,10 @@ internal static class DenonXmlParser
             throw new DenonProtocolException("Die Antwort ist keine gültige Denon-AppCommand-Antwort.");
         }
 
-        var responses = root.Elements().ToArray();
-        if (responses.Length < 4 || responses.Take(4).Any(element => !NameEquals(element, "cmd")))
-        {
-            throw new DenonProtocolException("Die AppCommand-Antwort enthält nicht alle Main-Zone-Statuswerte.");
-        }
-
-        var power = Value(responses[0], "zone1") ?? "UNKNOWN";
-        var volume = NestedValue(responses[1], "zone1", "volume");
-        var mute = Value(responses[2], "zone1");
-        var input = NestedValue(responses[3], "zone1", "source");
-        var inputs = responses.Length >= 5
-            ? ParseAvailableInputs(responses[4])
-            : [];
-
-        return new DenonReceiverState(
-            power.Equals("ON", StringComparison.OrdinalIgnoreCase),
-            power,
-            input,
-            ParseNullableDouble(volume),
-            ParseNullableBoolean(mute),
-            inputs);
+        // Unsupported commands are represented by <error> instead of <cmd>.
+        // The remaining state values can still be used.
+        return root.Elements()
+            .FirstOrDefault(element => NameEquals(element, "cmd"));
     }
 
     private static XDocument ParseSecurely(string xml)
