@@ -450,7 +450,12 @@ static async Task SetAdditionalZoneInputAsync(
         return;
     }
 
-    var inputs = await receiver.RefreshInputsAsync(cancellationToken);
+    var inputs = (await receiver.RefreshInputsAsync(cancellationToken)).ToList();
+
+    if (!inputs.Contains("SOURCE", StringComparer.OrdinalIgnoreCase))
+    {
+        inputs.Add("SOURCE");
+    }
     Console.WriteLine("Verfügbare Eingänge:");
     for (var index = 0; index < inputs.Count; index++)
     {
