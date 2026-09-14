@@ -63,4 +63,31 @@ internal static class TestXml
         """;
 
     internal const string AppCommandError = "<rx><error>2</error></rx>";
+
+    internal const string AppCommandAudioInfo = """
+        <rx><cmd>
+          <name>GetAudioInfo</name>
+          <list>
+            <param name="inputmode" control="1">HDMI</param>
+            <param name="output" control="1">Speaker</param>
+            <param name="signal" control="1">Dolby Audio - Dolby Digital Plus</param>
+            <param name="sound" control="1">Dolby Surround</param>
+            <param name="fs" control="1">48 kHz</param>
+          </list>
+        </cmd></rx>
+        """;
+
+    internal const string AppCommandActiveSpeakers = """
+        <rx><cmd>
+          <name>GetActiveSpeaker</name>
+          <list>
+            <param name="activespb1" control="2">SW</param>
+            <param name="activespb2" control="2">FL</param>
+            <param name="activespc2" control="1">C</param>
+            <param name="activespd2" control="2">FR</param>
+            <param name="activespb3" control="2">SL</param>
+            <param name="activespd3" control="2">SR</param>
+          </list>
+        </cmd></rx>
+        """;
 }

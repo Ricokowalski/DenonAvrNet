@@ -100,13 +100,31 @@ public sealed class DenonAvrClient : IDisposable
                 port,
                 DenonAppCommand.GetDeletedSource,
                 cancellationToken).ConfigureAwait(false);
+            var audioInfoXml = await TryQueryAppCommand0300Async(
+                port,
+                DenonAppCommand.CreateDetailedRequest(
+                    DenonAppCommand.GetAudioInfo,
+                    "inputmode",
+                    "output",
+                    "signal",
+                    "sound",
+                    "fs"),
+                cancellationToken).ConfigureAwait(false);
+            var activeSpeakersXml = await TryQueryAppCommand0300Async(
+                port,
+                DenonAppCommand.CreateDetailedRequest(
+                    DenonAppCommand.GetActiveSpeaker,
+                    "activespall"),
+                cancellationToken).ConfigureAwait(false);
 
             State = DenonXmlParser.ParseAppCommandMainZoneStatus(
                 powerXml,
                 volumeXml,
                 muteXml,
                 sourceXml,
-                deletedSourcesXml);
+                deletedSourcesXml,
+                audioInfoXml,
+                activeSpeakersXml);
         }
         else
         {
@@ -132,6 +150,28 @@ public sealed class DenonAvrClient : IDisposable
             DenonEndpoints.AppCommand,
             DenonAppCommand.CreateRequest(command),
             cancellationToken);
+
+    private async Task<string?> TryQueryAppCommand0300Async(
+        int port,
+        string request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _httpTransport.PostXmlAsync(
+                Host,
+                port,
+                DenonEndpoints.AppCommand0300,
+                request,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Audio details are an optional capability. Receivers without the
+            // AppCommand0300 endpoint must still return their basic state.
+            return null;
+        }
+    }
 
     public Task PowerOnAsync(CancellationToken cancellationToken = default) =>
         SendCommandAsync(DenonEndpoints.PowerOn, cancellationToken);
@@ -172,7 +212,8 @@ public sealed class DenonAvrClient : IDisposable
             throw new ArgumentException("Der Eingangsname darf keinen Zeilenumbruch enthalten.", nameof(input));
         }
 
-        return SendCommandAsync(DenonEndpoints.SetInput(input.Trim()), cancellationToken);
+        var protocolName = DenonInputSource.ToProtocolName(input.Trim());
+        return SendCommandAsync(DenonEndpoints.SetInput(protocolName), cancellationToken);
     }
 
     public async Task SendCommandAsync(

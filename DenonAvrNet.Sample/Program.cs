@@ -141,6 +141,10 @@ static async Task ShowStatusAsync(
     Console.WriteLine($"  Eingang:     {state.Input ?? "unbekannt"}");
     Console.WriteLine($"  Lautstärke:  {FormatVolume(state.VolumeDb)}");
     Console.WriteLine($"  Mute:        {FormatMute(state.IsMuted)}");
+    Console.WriteLine($"  Audioformat: {state.Audio?.AudioFormat ?? "unbekannt"}");
+    Console.WriteLine($"  Soundmodus:  {state.Audio?.SoundMode ?? "unbekannt"}");
+    Console.WriteLine($"  Samplerate:  {state.Audio?.SampleRate ?? "unbekannt"}");
+    Console.WriteLine($"  Lautsprecher:{FormatSpeakers(state.Audio?.ActiveSpeakers)}");
 }
 
 static async Task SetVolumeAsync(
@@ -219,3 +223,8 @@ static string FormatMute(bool? muted) => muted switch
     false => "Aus",
     null => "unbekannt"
 };
+
+static string FormatSpeakers(IReadOnlyList<string>? speakers) =>
+    speakers is null || speakers.Count == 0
+        ? " unbekannt/keine"
+        : $" {string.Join(", ", speakers)}";

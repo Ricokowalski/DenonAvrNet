@@ -41,7 +41,9 @@ public sealed class DenonXmlParserTests
             TestXml.AppCommandVolume,
             TestXml.AppCommandMute,
             TestXml.AppCommandSource,
-            TestXml.AppCommandDeletedSources);
+            TestXml.AppCommandDeletedSources,
+            TestXml.AppCommandAudioInfo,
+            TestXml.AppCommandActiveSpeakers);
 
         Assert.True(result.IsPoweredOn);
         Assert.Equal("ON", result.Power);
@@ -51,6 +53,13 @@ public sealed class DenonXmlParserTests
         Assert.Equal(
             new[] { "CBL/SAT", "Media Player", "PHONO" },
             result.AvailableInputs);
+        Assert.NotNull(result.Audio);
+        Assert.Equal("HDMI", result.Audio.InputMode);
+        Assert.Equal("Speaker", result.Audio.Output);
+        Assert.Equal("Dolby Audio - Dolby Digital Plus", result.Audio.AudioFormat);
+        Assert.Equal("Dolby Surround", result.Audio.SoundMode);
+        Assert.Equal("48 kHz", result.Audio.SampleRate);
+        Assert.Equal(new[] { "SW", "FL", "FR", "SL", "SR" }, result.Audio.ActiveSpeakers);
     }
 
     [Fact]
@@ -67,6 +76,7 @@ public sealed class DenonXmlParserTests
         Assert.Null(result.VolumeDb);
         Assert.False(result.IsMuted);
         Assert.Equal("MPLAY", result.Input);
+        Assert.Null(result.Audio);
     }
 
     [Fact]

@@ -6,4 +6,5 @@ public sealed record DenonReceiverState(
     string? Input,
     double? VolumeDb,
     bool? IsMuted,
-    IReadOnlyList<string> AvailableInputs);
+    IReadOnlyList<string> AvailableInputs,
+    DenonAudioInfo? Audio = null);

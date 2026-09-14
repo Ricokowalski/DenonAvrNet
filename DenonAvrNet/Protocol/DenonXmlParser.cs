@@ -64,7 +64,9 @@ internal static class DenonXmlParser
         string volumeXml,
         string muteXml,
         string sourceXml,
-        string deletedSourcesXml)
+        string deletedSourcesXml,
+        string? audioInfoXml = null,
+        string? activeSpeakersXml = null)
     {
         var powerCommand = ParseAppCommandResponse(powerXml);
         var volumeCommand = ParseAppCommandResponse(volumeXml);
@@ -95,6 +97,7 @@ internal static class DenonXmlParser
             ? []
             : ParseAvailableInputs(deletedSourcesCommand);
         var normalizedPower = power ?? "UNKNOWN";
+        var audio = ParseAudioInfo(audioInfoXml, activeSpeakersXml);
 
         return new DenonReceiverState(
             normalizedPower.Equals("ON", StringComparison.OrdinalIgnoreCase),
@@ -102,8 +105,53 @@ internal static class DenonXmlParser
             input,
             ParseNullableDouble(volume),
             ParseNullableBoolean(mute),
-            inputs);
+            inputs,
+            audio);
     }
+
+    private static DenonAudioInfo? ParseAudioInfo(
+        string? audioInfoXml,
+        string? activeSpeakersXml)
+    {
+        var audioCommand = ParseOptionalAppCommandResponse(audioInfoXml);
+        var activeSpeakersCommand = ParseOptionalAppCommandResponse(activeSpeakersXml);
+        var activeSpeakers = activeSpeakersCommand?
+            .Descendants()
+            .Where(element => NameEquals(element, "param"))
+            .Where(element => string.Equals(
+                AttributeValue(element, "control"),
+                "2",
+                StringComparison.OrdinalIgnoreCase))
+            .Select(element => element.Value.Trim())
+            .Where(value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? [];
+
+        var inputMode = ParameterValue(audioCommand, "inputmode");
+        var output = ParameterValue(audioCommand, "output");
+        var audioFormat = ParameterValue(audioCommand, "signal");
+        var soundMode = ParameterValue(audioCommand, "sound");
+        var sampleRate = ParameterValue(audioCommand, "fs");
+
+        if (inputMode is null && output is null && audioFormat is null &&
+            soundMode is null && sampleRate is null && activeSpeakers.Length == 0)
+        {
+            return null;
+        }
+
+        return new DenonAudioInfo(
+            inputMode,
+            output,
+            audioFormat,
+            soundMode,
+            sampleRate,
+            activeSpeakers);
+    }
+
+    private static XElement? ParseOptionalAppCommandResponse(string? xml) =>
+        string.IsNullOrWhiteSpace(xml)
+            ? null
+            : ParseAppCommandResponse(xml);
 
     private static XElement? ParseAppCommandResponse(string xml)
     {
@@ -119,6 +167,33 @@ internal static class DenonXmlParser
         return root.Elements()
             .FirstOrDefault(element => NameEquals(element, "cmd"));
     }
+
+    private static string? ParameterValue(XElement? command, string parameterName)
+    {
+        if (command is null)
+        {
+            return null;
+        }
+
+        var value = command.Descendants()
+            .FirstOrDefault(element =>
+                NameEquals(element, "param") &&
+                string.Equals(
+                    AttributeValue(element, "name"),
+                    parameterName,
+                    StringComparison.OrdinalIgnoreCase))?
+            .Value
+            .Trim();
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static string? AttributeValue(XElement element, string attributeName) =>
+        element.Attributes()
+            .FirstOrDefault(attribute => attribute.Name.LocalName.Equals(
+                attributeName,
+                StringComparison.OrdinalIgnoreCase))?
+            .Value;
 
     private static XDocument ParseSecurely(string xml)
     {
