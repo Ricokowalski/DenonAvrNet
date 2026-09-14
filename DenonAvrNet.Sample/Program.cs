@@ -13,9 +13,9 @@ Console.CancelKeyPress += (_, eventArgs) =>
     cancellationSource.Cancel();
 };
 
-Console.Write("Receiver-IP [10.37.0.190]: ");
+Console.Write("Receiver-IP [192.168.0.5]: ");
 var enteredHost = Console.ReadLine()?.Trim();
-var host = string.IsNullOrWhiteSpace(enteredHost) ? "10.37.0.190" : enteredHost;
+var host = string.IsNullOrWhiteSpace(enteredHost) ? "192.168.0.5" : enteredHost;
 
 using var receiver = new DenonAvrClient(host);
 
