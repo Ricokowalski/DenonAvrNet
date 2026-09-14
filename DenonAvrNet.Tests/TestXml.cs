@@ -53,12 +53,47 @@ internal static class TestXml
         </cmd></rx>
         """;
 
+    internal const string AppCommandBundledMainZoneStatus = """
+        <rx>
+          <cmd><zone1>ON</zone1><zone2>OFF</zone2><zone3>OFF</zone3></cmd>
+          <cmd>
+            <zone1><volume>-35.5</volume><state>variable</state></zone1>
+            <zone2><volume>-40</volume></zone2>
+            <zone3><volume>-40</volume></zone3>
+          </cmd>
+          <cmd><zone1>off</zone1><zone2>off</zone2><zone3>off</zone3></cmd>
+          <cmd>
+            <zone1><source>MPLAY</source></zone1>
+            <zone2><source>SOURCE</source></zone2>
+            <zone3><source>SOURCE</source></zone3>
+          </cmd>
+        </rx>
+        """;
+
+    internal const string AppCommandIncompleteBundle = """
+        <rx>
+          <cmd><zone1>ON</zone1></cmd>
+          <cmd><zone1><volume>-35.5</volume></zone1></cmd>
+        </rx>
+        """;
+
+    internal const string AppCommandEmpty = "<rx></rx>";
+
     internal const string AppCommandDeletedSources = """
         <rx><cmd><functiondelete>
           <list><name>CBL/SAT</name><FuncName>CBL/SAT</FuncName><use>1</use></list>
           <list><name>Media Player</name><FuncName>Media Player</FuncName><use>1</use></list>
           <list><name>TV AUDIO</name><FuncName>TV AUDIO</FuncName><use>0</use></list>
           <list><name>PHONO</name><FuncName>PHONO</FuncName><use>1</use></list>
+        </functiondelete></cmd></rx>
+        """;
+
+    internal const string AppCommandDeletedSourcesWithoutPhono = """
+        <rx><cmd><functiondelete>
+          <list><name>CBL/SAT</name><FuncName>CBL/SAT</FuncName><use>1</use></list>
+          <list><name>Media Player</name><FuncName>Media Player</FuncName><use>1</use></list>
+          <list><name>TV AUDIO</name><FuncName>TV AUDIO</FuncName><use>0</use></list>
+          <list><name>PHONO</name><FuncName>PHONO</FuncName><use>0</use></list>
         </functiondelete></cmd></rx>
         """;
 

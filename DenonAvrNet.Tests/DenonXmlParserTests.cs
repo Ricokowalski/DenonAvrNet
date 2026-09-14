@@ -80,6 +80,32 @@ public sealed class DenonXmlParserTests
     }
 
     [Fact]
+    public void ParseBundledAppCommandMainZoneStatus_ReadsResponsesByRequestOrder()
+    {
+        string[] inputs = ["CBL/SAT", "Media Player", "PHONO"];
+
+        var result = DenonXmlParser.ParseBundledAppCommandMainZoneStatus(
+            TestXml.AppCommandBundledMainZoneStatus,
+            inputs);
+
+        Assert.True(result.IsPoweredOn);
+        Assert.Equal("ON", result.Power);
+        Assert.Equal(-35.5, result.VolumeDb);
+        Assert.False(result.IsMuted);
+        Assert.Equal("MPLAY", result.Input);
+        Assert.Same(inputs, result.AvailableInputs);
+    }
+
+    [Fact]
+    public void ParseBundledAppCommandMainZoneStatus_RejectsIncompleteResponse()
+    {
+        Assert.Throws<DenonProtocolException>(() =>
+            DenonXmlParser.ParseBundledAppCommandMainZoneStatus(
+                TestXml.AppCommandIncompleteBundle,
+                []));
+    }
+
+    [Fact]
     public void ParseDeviceInfo_RejectsExternalDocumentType()
     {
         const string unsafeXml = """

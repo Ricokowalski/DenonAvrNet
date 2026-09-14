@@ -84,9 +84,15 @@ Beispielantwort:
 </rx>
 ```
 
-Die Bibliothek sendet Power, Lautstärke, Mute, Quelle und Eingangsliste in
-einzelnen, aufeinanderfolgenden Requests. Diese Strategie verhindert
-unvollständige Antworten bestimmter Firmwarestände.
+Die Bibliothek bündelt Power, Lautstärke, Mute und Quelle zunächst in einem
+Request. Die vier `<cmd>`-Antworten werden in derselben Reihenfolge ausgewertet.
+Die Eingangsliste wird separat gelesen und anschließend zwischengespeichert.
+
+Enthält die gebündelte Antwort nicht genau vier Ergebnisse oder keinen
+auswertbaren Main-Zone-Wert, sendet der Client die vier Statusbefehle nochmals
+einzeln. Er merkt sich dieses Receiververhalten bis zur nächsten
+Initialisierung, sodass spätere Aktualisierungen den erfolglosen gebündelten
+Versuch überspringen.
 
 Ein nicht unterstützter Einzelbefehl kann als `<error>` zurückgegeben werden.
 Solange mindestens ein auswertbarer Main-Zone-Basiswert vorhanden ist, können
@@ -201,8 +207,9 @@ nicht als erfolgreicher Protokollrequest interpretiert werden.
 ### Nicht alle Werte vorhanden
 
 Mögliche Ursachen sind nicht unterstützte Kommandos, der Standby-Zustand oder
-gebündelte/parallele Requests. Die Bibliothek sendet die bekannten Abfragen
-sequenziell und behandelt die Audioerweiterung als optional.
+gebündelte/parallele Requests. Die Bibliothek wechselt bei einer unvollständigen
+gebündelten Basisantwort automatisch auf sequenzielle Einzelabfragen und
+behandelt die Audioerweiterung als optional.
 
 ### `AudioFormat` ist `Unknown`
 

@@ -80,14 +80,21 @@ Task<DenonReceiverState> UpdateAsync(
 Die Methode liest den Main-Zone-Status und schreibt das Ergebnis zugleich nach
 `State`.
 
-Auf Port 8080 werden folgende Basisabfragen sequenziell an `AppCommand.xml`
-gesendet:
+Auf Port 8080 werden folgende vier Basisabfragen zunächst gemeinsam an
+`AppCommand.xml` gesendet:
 
 - `GetAllZonePowerStatus`
 - `GetAllZoneVolume`
 - `GetAllZoneMuteStatus`
 - `GetAllZoneSource`
-- `GetDeletedSource`
+
+Ist die Antwort vollständig auswertbar, verwendet der Client diesen kompakten
+Abruf weiter. Bei einer unvollständigen oder leeren Antwort werden dieselben
+vier Befehle automatisch einzeln wiederholt. Diese Kompatibilitätsentscheidung
+bleibt bis zum nächsten `InitializeAsync()` gespeichert.
+
+`GetDeletedSource` liefert die aktivierte Eingangsliste. Sie wird beim ersten
+Statusabruf separat gelesen und anschließend im Client zwischengespeichert.
 
 Danach werden – sofern verfügbar – über `AppCommand0300.xml` abgefragt:
 
@@ -97,9 +104,23 @@ Danach werden – sofern verfügbar – über `AppCommand0300.xml` abgefragt:
 Auf Port 80 wird die ältere Main-Zone-Status-XML verwendet. Dort stehen die
 erweiterten Audioinformationen normalerweise nicht zur Verfügung.
 
-Die Requests werden absichtlich nicht parallel ausgeführt. Einige
-Receiver-Firmwarestände lassen bei parallelen oder gebündelten Anfragen
-Antwortteile aus.
+Die Requests werden nicht parallel ausgeführt. Dadurch werden Firmwareprobleme
+mit gleichzeitig eintreffenden AppCommand-Anfragen vermieden.
+
+### `RefreshInputsAsync`
+
+```csharp
+Task<IReadOnlyList<string>> RefreshInputsAsync(
+    CancellationToken cancellationToken = default)
+```
+
+Liest die aktuell aktivierten Eingänge erneut vom Receiver und ersetzt den
+internen Cache. Falls bereits ein `State` vorhanden ist, erhält auch dessen
+`AvailableInputs` die neue Liste; die anderen Statuswerte bleiben unverändert.
+
+Ein manueller Refresh ist sinnvoll, nachdem Eingänge im Setup des Receivers
+aktiviert, deaktiviert oder umkonfiguriert wurden. Der erste Aufruf von
+`UpdateAsync()` erledigt dies automatisch.
 
 ### Power
 

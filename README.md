@@ -17,6 +17,9 @@ der Statusschnittstelle auf Port `80` werden ebenfalls berücksichtigt.
   - Master-Lautstärke
   - Mute
   - verfügbare Eingänge
+- zwischengespeicherte Eingangsliste mit gezielter Aktualisierung
+- automatische Kompatibilitätsumschaltung bei unvollständigen gebündelten
+  AppCommand-Antworten
 - erweiterte Audioinformationen auf kompatiblen Geräten:
   - Audio-Eingangsmodus
   - Audioausgang
@@ -98,6 +101,14 @@ bestätigten Zustand muss anschließend erneut abgefragt werden:
 await receiver.SetInputAsync("CBL/SAT");
 await Task.Delay(350);
 var confirmedState = await receiver.UpdateAsync();
+```
+
+Die Liste `AvailableInputs` wird beim ersten Statusabruf geladen und danach
+zwischengespeichert. Nach Änderungen an der Eingangs-Konfiguration des Receivers
+kann sie ausdrücklich neu gelesen werden:
+
+```csharp
+var currentInputs = await receiver.RefreshInputsAsync();
 ```
 
 ## Eingangsnamen
@@ -204,21 +215,28 @@ dotnet run --project .\DenonAvrNet.Sample
 dotnet test
 ```
 
+Im Sample startet die Menüoption `D` fünf aufeinanderfolgende Statusabfragen.
+Diese Diagnose ist rein lesend und ändert keine Receiver-Einstellung.
+
 ## Technische Hinweise
 
 - Port `8080` verwendet für den Basisstatus `AppCommand.xml` mit
-  `cmd id="1"`.
+  `cmd id="1"`. Vier Statusbefehle werden zunächst in einem Request gebündelt.
+- Liefert ein Receiver darauf keine vollständig auswertbare Antwort, wiederholt
+  der Client den Abruf mit Einzelrequests und merkt sich diese Variante bis zur
+  nächsten Initialisierung.
 - Audioformat und aktive Lautsprecher werden über `AppCommand0300.xml` mit
   `cmd id="3"` abgefragt.
-- Die Aufrufe erfolgen bewusst sequenziell, da manche Receiver bei gebündelten
-  oder parallelen AppCommand-Anfragen unvollständig antworten.
+- Die Detailabfragen erfolgen sequenziell; parallele Zugriffe werden vermieden.
+- Die Eingangsliste wird separat geladen und im Client zwischengespeichert.
 - Der AVC-X6800H benötigt nach der XML-Deklaration ein CRLF. Ohne diesen
   Zeilenumbruch antwortet er mit HTTP 200 und einem leeren `<rx>`-Element.
 - `DenonAvrClient` sollte nicht gleichzeitig über mehrere parallele
   `UpdateAsync()`-Aufrufe verwendet werden.
 
-Weitere Details stehen in der [API-Dokumentation](docs/API.md) und den
-[Protokollnotizen](docs/PROTOCOL.md).
+Weitere Details stehen in der [API-Dokumentation](docs/API.md), den
+[Protokollnotizen](docs/PROTOCOL.md) und der
+[Geräte-Testanleitung](docs/DEVICE-TESTING.md).
 
 ## Aktuelle Grenzen
 

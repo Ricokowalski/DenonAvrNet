@@ -15,14 +15,43 @@ internal static class DenonAppCommand
 
     internal const string GetActiveSpeaker = "GetActiveSpeaker";
 
+    internal static readonly IReadOnlyList<string> MainZoneStatusCommands =
+    [
+        GetAllZonePowerStatus,
+        GetAllZoneVolume,
+        GetAllZoneMuteStatus,
+        GetAllZoneSource
+    ];
+
     internal static string CreateRequest(string command)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
+        return CreateRequest([command]);
+    }
+
+    internal static string CreateRequest(IReadOnlyCollection<string> commands)
+    {
+        ArgumentNullException.ThrowIfNull(commands);
+
+        if (commands.Count is < 1 or > 5)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(commands),
+                commands.Count,
+                "Eine AppCommand-Anfrage muss zwischen einem und fünf Befehlen enthalten.");
+        }
+
+        if (commands.Any(string.IsNullOrWhiteSpace))
+        {
+            throw new ArgumentException("Befehlsnamen dürfen nicht leer sein.", nameof(commands));
+        }
+
         var document = new XDocument(
             new XDeclaration("1.0", "utf-8", null),
             new XElement(
                 "tx",
-                new XElement("cmd", new XAttribute("id", "1"), command)));
+                commands.Select(command =>
+                    new XElement("cmd", new XAttribute("id", "1"), command))));
 
         return Serialize(document);
     }

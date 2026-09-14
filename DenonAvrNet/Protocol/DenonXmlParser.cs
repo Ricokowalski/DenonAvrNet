@@ -74,40 +74,69 @@ internal static class DenonXmlParser
         var sourceCommand = ParseAppCommandResponse(sourceXml);
         var deletedSourcesCommand = ParseAppCommandResponse(deletedSourcesXml);
 
-        var power = powerCommand is null
-            ? null
-            : Value(powerCommand, "zone1");
-        var volume = volumeCommand is null
-            ? null
-            : NestedValue(volumeCommand, "zone1", "volume");
-        var mute = muteCommand is null
-            ? null
-            : Value(muteCommand, "zone1");
-        var input = sourceCommand is null
-            ? null
-            : NestedValue(sourceCommand, "zone1", "source");
-
-        if (power is null && volume is null && mute is null && input is null)
-        {
-            throw new DenonProtocolException(
-                "Die AppCommand-Antworten enthalten keine auswertbaren Main-Zone-Statuswerte.");
-        }
-
         var inputs = deletedSourcesCommand is null
             ? []
             : ParseAvailableInputs(deletedSourcesCommand);
-        var normalizedPower = power ?? "UNKNOWN";
         var audio = ParseAudioInfo(audioInfoXml, activeSpeakersXml);
-
-        return new DenonReceiverState(
-            normalizedPower.Equals("ON", StringComparison.OrdinalIgnoreCase),
-            normalizedPower,
-            input,
-            ParseNullableDouble(volume),
-            ParseNullableBoolean(mute),
-            inputs,
-            audio);
+        return CreateMainZoneState(
+            powerCommand,
+            volumeCommand,
+            muteCommand,
+            sourceCommand,
+            inputs) with
+        {
+            Audio = audio
+        };
     }
+
+    internal static DenonReceiverState ParseBundledAppCommandMainZoneStatus(
+        string xml,
+        IReadOnlyList<string> availableInputs)
+    {
+        ArgumentNullException.ThrowIfNull(availableInputs);
+        var responses = ParseAppCommandResponses(xml);
+
+        if (responses.Count != DenonAppCommand.MainZoneStatusCommands.Count)
+        {
+            throw new DenonProtocolException(
+                $"Die gebündelte AppCommand-Antwort enthält {responses.Count} statt " +
+                $"{DenonAppCommand.MainZoneStatusCommands.Count} Ergebnissen.");
+        }
+
+        return CreateMainZoneState(
+            CommandOrNull(responses[0]),
+            CommandOrNull(responses[1]),
+            CommandOrNull(responses[2]),
+            CommandOrNull(responses[3]),
+            availableInputs);
+    }
+
+    internal static DenonReceiverState ParseSeparateAppCommandMainZoneStatus(
+        string powerXml,
+        string volumeXml,
+        string muteXml,
+        string sourceXml,
+        IReadOnlyList<string> availableInputs)
+    {
+        ArgumentNullException.ThrowIfNull(availableInputs);
+        return CreateMainZoneState(
+            ParseAppCommandResponse(powerXml),
+            ParseAppCommandResponse(volumeXml),
+            ParseAppCommandResponse(muteXml),
+            ParseAppCommandResponse(sourceXml),
+            availableInputs);
+    }
+
+    internal static IReadOnlyList<string> ParseAppCommandAvailableInputs(string xml)
+    {
+        var command = ParseAppCommandResponse(xml);
+        return command is null ? [] : ParseAvailableInputs(command);
+    }
+
+    internal static DenonAudioInfo? ParseAppCommandAudioInfo(
+        string? audioInfoXml,
+        string? activeSpeakersXml) =>
+        ParseAudioInfo(audioInfoXml, activeSpeakersXml);
 
     private static DenonAudioInfo? ParseAudioInfo(
         string? audioInfoXml,
@@ -155,6 +184,13 @@ internal static class DenonXmlParser
 
     private static XElement? ParseAppCommandResponse(string xml)
     {
+        // Unsupported commands are represented by <error> instead of <cmd>.
+        return ParseAppCommandResponses(xml)
+            .FirstOrDefault(element => NameEquals(element, "cmd"));
+    }
+
+    private static IReadOnlyList<XElement> ParseAppCommandResponses(string xml)
+    {
         var root = ParseSecurely(xml).Root;
 
         if (root is null || !NameEquals(root, "rx"))
@@ -162,10 +198,48 @@ internal static class DenonXmlParser
             throw new DenonProtocolException("Die Antwort ist keine gültige Denon-AppCommand-Antwort.");
         }
 
-        // Unsupported commands are represented by <error> instead of <cmd>.
-        // The remaining state values can still be used.
         return root.Elements()
-            .FirstOrDefault(element => NameEquals(element, "cmd"));
+            .Where(element => NameEquals(element, "cmd") || NameEquals(element, "error"))
+            .ToArray();
+    }
+
+    private static XElement? CommandOrNull(XElement response) =>
+        NameEquals(response, "cmd") ? response : null;
+
+    private static DenonReceiverState CreateMainZoneState(
+        XElement? powerCommand,
+        XElement? volumeCommand,
+        XElement? muteCommand,
+        XElement? sourceCommand,
+        IReadOnlyList<string> availableInputs)
+    {
+        var power = powerCommand is null
+            ? null
+            : Value(powerCommand, "zone1");
+        var volume = volumeCommand is null
+            ? null
+            : NestedValue(volumeCommand, "zone1", "volume");
+        var mute = muteCommand is null
+            ? null
+            : Value(muteCommand, "zone1");
+        var input = sourceCommand is null
+            ? null
+            : NestedValue(sourceCommand, "zone1", "source");
+
+        if (power is null && volume is null && mute is null && input is null)
+        {
+            throw new DenonProtocolException(
+                "Die AppCommand-Antworten enthalten keine auswertbaren Main-Zone-Statuswerte.");
+        }
+
+        var normalizedPower = power ?? "UNKNOWN";
+        return new DenonReceiverState(
+            normalizedPower.Equals("ON", StringComparison.OrdinalIgnoreCase),
+            normalizedPower,
+            input,
+            ParseNullableDouble(volume),
+            ParseNullableBoolean(mute),
+            availableInputs);
     }
 
     private static string? ParameterValue(XElement? command, string parameterName)

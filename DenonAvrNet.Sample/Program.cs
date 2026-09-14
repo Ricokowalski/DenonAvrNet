@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using DenonAvrNet;
 using DenonAvrNet.Exceptions;
@@ -75,6 +76,9 @@ try
             case "9":
                 await SetInputAsync(receiver, cancellationSource.Token);
                 break;
+            case "D":
+                await RunReadOnlyDiagnosticAsync(receiver, cancellationSource.Token);
+                break;
             case "0":
             case "Q":
                 return;
@@ -115,6 +119,7 @@ static void PrintMenu()
         7  Mute einschalten
         8  Mute ausschalten
         9  Eingang auswählen
+        D  Nur-Lese-Diagnose (5 Statusabfragen)
         0  Beenden
         """);
     Console.Write("Auswahl: ");
@@ -177,12 +182,12 @@ static async Task SetInputAsync(
     DenonAvrClient receiver,
     CancellationToken cancellationToken)
 {
-    var state = await receiver.UpdateAsync(cancellationToken);
+    var inputs = await receiver.RefreshInputsAsync(cancellationToken);
 
     Console.WriteLine("Verfügbare Eingänge:");
-    for (var index = 0; index < state.AvailableInputs.Count; index++)
+    for (var index = 0; index < inputs.Count; index++)
     {
-        Console.WriteLine($"  {index + 1,2}: {state.AvailableInputs[index]}");
+        Console.WriteLine($"  {index + 1,2}: {inputs[index]}");
     }
 
     Console.Write("Nummer oder Denon-Protokollname: ");
@@ -193,14 +198,44 @@ static async Task SetInputAsync(
     }
 
     var input = int.TryParse(selection, out var number) &&
-                number >= 1 && number <= state.AvailableInputs.Count
-        ? state.AvailableInputs[number - 1]
+                number >= 1 && number <= inputs.Count
+        ? inputs[number - 1]
         : selection;
 
     await ExecuteAndRefreshAsync(
         receiver,
         token => receiver.SetInputAsync(input, token),
         cancellationToken);
+}
+
+static async Task RunReadOnlyDiagnosticAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    const int repetitions = 5;
+    Console.WriteLine(
+        $"\nStarte {repetitions} reine Statusabfragen; es werden keine Steuerbefehle gesendet.");
+
+    for (var attempt = 1; attempt <= repetitions; attempt++)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var state = await receiver.UpdateAsync(cancellationToken);
+        stopwatch.Stop();
+
+        Console.WriteLine(
+            $"  {attempt}/{repetitions}  {stopwatch.ElapsedMilliseconds,4} ms | " +
+            $"Power {state.Power} | Eingang {state.Input ?? "?"} | " +
+            $"Lautstärke {FormatVolume(state.VolumeDb)} | " +
+            $"Audio {state.Audio?.AudioFormat ?? "?"} | " +
+            $"Lautsprecher{FormatSpeakers(state.Audio?.ActiveSpeakers)}");
+
+        if (attempt < repetitions)
+        {
+            await Task.Delay(500, cancellationToken);
+        }
+    }
+
+    Console.WriteLine("Nur-Lese-Diagnose abgeschlossen.");
 }
 
 static bool Confirm(string question)

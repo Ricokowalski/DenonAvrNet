@@ -11,6 +11,8 @@ public sealed class DenonAvrClient : IDisposable
 {
     private readonly DenonHttpTransport _httpTransport;
     private readonly bool _ownsTransport;
+    private IReadOnlyList<string>? _availableInputs;
+    private bool _requiresSequentialAppCommandRequests;
     private bool _disposed;
 
     /// <summary>Creates a client for a receiver host or IP address.</summary>
@@ -67,6 +69,9 @@ public sealed class DenonAvrClient : IDisposable
                 var deviceInfo = DenonXmlParser.ParseDeviceInfo(xml);
                 HttpPort = port;
                 DeviceInfo = deviceInfo;
+                State = null;
+                _availableInputs = null;
+                _requiresSequentialAppCommandRequests = false;
                 return deviceInfo;
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
@@ -94,27 +99,11 @@ public sealed class DenonAvrClient : IDisposable
 
         if (port == 8080)
         {
-            // Keep AppCommand calls sequential. Some receiver firmware does not
-            // reliably return every result from bundled or concurrent queries.
-            var powerXml = await QueryAppCommandAsync(
+            var availableInputs = _availableInputs ??
+                await RefreshInputsAsync(cancellationToken).ConfigureAwait(false);
+            var mainZoneState = await QueryMainZoneStatusAsync(
                 port,
-                DenonAppCommand.GetAllZonePowerStatus,
-                cancellationToken).ConfigureAwait(false);
-            var volumeXml = await QueryAppCommandAsync(
-                port,
-                DenonAppCommand.GetAllZoneVolume,
-                cancellationToken).ConfigureAwait(false);
-            var muteXml = await QueryAppCommandAsync(
-                port,
-                DenonAppCommand.GetAllZoneMuteStatus,
-                cancellationToken).ConfigureAwait(false);
-            var sourceXml = await QueryAppCommandAsync(
-                port,
-                DenonAppCommand.GetAllZoneSource,
-                cancellationToken).ConfigureAwait(false);
-            var deletedSourcesXml = await QueryAppCommandAsync(
-                port,
-                DenonAppCommand.GetDeletedSource,
+                availableInputs,
                 cancellationToken).ConfigureAwait(false);
             var audioInfoXml = await TryQueryAppCommand0300Async(
                 port,
@@ -133,14 +122,12 @@ public sealed class DenonAvrClient : IDisposable
                     "activespall"),
                 cancellationToken).ConfigureAwait(false);
 
-            State = DenonXmlParser.ParseAppCommandMainZoneStatus(
-                powerXml,
-                volumeXml,
-                muteXml,
-                sourceXml,
-                deletedSourcesXml,
-                audioInfoXml,
-                activeSpeakersXml);
+            State = mainZoneState with
+            {
+                Audio = DenonXmlParser.ParseAppCommandAudioInfo(
+                    audioInfoXml,
+                    activeSpeakersXml)
+            };
         }
         else
         {
@@ -151,9 +138,110 @@ public sealed class DenonAvrClient : IDisposable
                 cancellationToken).ConfigureAwait(false);
 
             State = DenonXmlParser.ParseMainZoneStatus(xml);
+            _availableInputs = State.AvailableInputs;
         }
 
         return State;
+    }
+
+    /// <summary>Refreshes and returns the receiver's currently enabled input list.</summary>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The enabled input display names reported by the receiver.</returns>
+    public async Task<IReadOnlyList<string>> RefreshInputsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var port = GetInitializedPort();
+        IReadOnlyList<string> inputs;
+
+        if (port == 8080)
+        {
+            var xml = await QueryAppCommandAsync(
+                port,
+                DenonAppCommand.GetDeletedSource,
+                cancellationToken).ConfigureAwait(false);
+            inputs = DenonXmlParser.ParseAppCommandAvailableInputs(xml);
+        }
+        else
+        {
+            var xml = await _httpTransport.GetStringAsync(
+                Host,
+                port,
+                DenonEndpoints.MainZoneStatus,
+                cancellationToken).ConfigureAwait(false);
+            inputs = DenonXmlParser.ParseMainZoneStatus(xml).AvailableInputs;
+        }
+
+        _availableInputs = inputs;
+        if (State is not null)
+        {
+            State = State with { AvailableInputs = inputs };
+        }
+
+        return inputs;
+    }
+
+    private async Task<DenonReceiverState> QueryMainZoneStatusAsync(
+        int port,
+        IReadOnlyList<string> availableInputs,
+        CancellationToken cancellationToken)
+    {
+        if (!_requiresSequentialAppCommandRequests)
+        {
+            var bundledXml = await _httpTransport.PostXmlAsync(
+                Host,
+                port,
+                DenonEndpoints.AppCommand,
+                DenonAppCommand.CreateRequest(DenonAppCommand.MainZoneStatusCommands),
+                cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                return DenonXmlParser.ParseBundledAppCommandMainZoneStatus(
+                    bundledXml,
+                    availableInputs);
+            }
+            catch (DenonProtocolException)
+            {
+                // Remember the receiver's behavior so later updates can skip
+                // the known-incompatible bundled request.
+                _requiresSequentialAppCommandRequests = true;
+            }
+        }
+
+        return await QuerySequentialMainZoneStatusAsync(
+            port,
+            availableInputs,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<DenonReceiverState> QuerySequentialMainZoneStatusAsync(
+        int port,
+        IReadOnlyList<string> availableInputs,
+        CancellationToken cancellationToken)
+    {
+        var powerXml = await QueryAppCommandAsync(
+            port,
+            DenonAppCommand.GetAllZonePowerStatus,
+            cancellationToken).ConfigureAwait(false);
+        var volumeXml = await QueryAppCommandAsync(
+            port,
+            DenonAppCommand.GetAllZoneVolume,
+            cancellationToken).ConfigureAwait(false);
+        var muteXml = await QueryAppCommandAsync(
+            port,
+            DenonAppCommand.GetAllZoneMuteStatus,
+            cancellationToken).ConfigureAwait(false);
+        var sourceXml = await QueryAppCommandAsync(
+            port,
+            DenonAppCommand.GetAllZoneSource,
+            cancellationToken).ConfigureAwait(false);
+
+        return DenonXmlParser.ParseSeparateAppCommandMainZoneStatus(
+            powerXml,
+            volumeXml,
+            muteXml,
+            sourceXml,
+            availableInputs);
     }
 
     private Task<string> QueryAppCommandAsync(
