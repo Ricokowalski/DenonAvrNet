@@ -78,6 +78,7 @@ Projektverweis eingebunden:
 
 ```csharp
 using DenonAvrNet;
+using DenonAvrNet.Models;
 
 using var receiver = new DenonAvrClient("10.37.0.190");
 
@@ -92,6 +93,7 @@ Console.WriteLine($"Lautstärke: {state.VolumeDb} dB");
 Console.WriteLine($"Audioformat: {state.Audio?.AudioFormat ?? "unbekannt"}");
 Console.WriteLine($"Soundmodus: {state.Audio?.SoundMode ?? "unbekannt"}");
 Console.WriteLine($"Aktive Lautsprecher: {string.Join(", ", state.Audio?.ActiveSpeakers ?? [])}");
+Console.WriteLine($"Aktive Kanäle: {state.Audio?.ActiveSpeakerChannels ?? SpeakerChannel.None}");
 ```
 
 `InitializeAsync()` muss einmal erfolgreich ausgeführt werden, bevor Status-
@@ -173,6 +175,7 @@ Snapshot in `receiver.State`.
 | `SoundMode` | aktiver Wiedergabe-/Upmix-Modus |
 | `SampleRate` | beispielsweise `48 kHz` |
 | `ActiveSpeakers` | aktive Denon-Kanalkürzel wie `FL`, `C`, `SW` oder `TFL` |
+| `ActiveSpeakerChannels` | dieselben Kanäle als kombinierbares `SpeakerChannel`-Flags-Enum |
 
 `Audio` kann bei älteren oder inkompatiblen Receivern `null` sein. Auch einzelne
 Werte können fehlen. Ein vom Receiver geliefertes `Unknown` wird bewusst nicht

@@ -1,4 +1,5 @@
 ﻿using DenonAvrNet.Exceptions;
+using DenonAvrNet.Models;
 using DenonAvrNet.Protocol;
 
 namespace DenonAvrNet.Tests;
@@ -66,6 +67,13 @@ public sealed class DenonXmlParserTests
         Assert.Equal("Dolby Surround", result.Audio.SoundMode);
         Assert.Equal("48 kHz", result.Audio.SampleRate);
         Assert.Equal(new[] { "SW", "FL", "FR", "SL", "SR" }, result.Audio.ActiveSpeakers);
+        Assert.Equal(
+            SpeakerChannel.Subwoofer |
+            SpeakerChannel.FrontLeft |
+            SpeakerChannel.FrontRight |
+            SpeakerChannel.SurroundLeft |
+            SpeakerChannel.SurroundRight,
+            result.Audio.ActiveSpeakerChannels);
     }
 
     [Fact]

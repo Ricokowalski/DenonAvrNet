@@ -178,6 +178,8 @@ bedeutet *nicht aktiv bzw. nicht verfügbar*. Im Beispiel sind die Positionen
 Die genaue Zuordnung der 32 Positionen zu Kanalnamen veröffentlicht Denon nicht.
 Für belastbare Namen wie `FL`, `C`, `SW`, `TFL` oder `TRR` ist deshalb weiterhin
 `state.Audio.ActiveSpeakers` aus der HTTP-Abfrage `GetActiveSpeaker` maßgeblich.
+Für typsichere Abfragen steht zusätzlich `state.Audio.ActiveSpeakerChannels`
+als `SpeakerChannel`-Flags-Enum bereit.
 
 Der Event stellt die bereits dekodierte Matrix bereit:
 
@@ -339,6 +341,7 @@ Objekt wird durch spätere Abfragen nicht nachträglich verändert.
 | `SoundMode` | `string?` | `sound` |
 | `SampleRate` | `string?` | `fs` |
 | `ActiveSpeakers` | `IReadOnlyList<string>` | Werte aus `GetActiveSpeaker` mit `control="2"` |
+| `ActiveSpeakerChannels` | `SpeakerChannel` | kombinierte, typsichere Variante von `ActiveSpeakers` |
 
 `AudioFormat` bezeichnet das vom Receiver erkannte Eingangssignal.
 `SoundMode` bezeichnet dagegen den aktuell angewendeten Wiedergabe- oder
@@ -359,6 +362,19 @@ Typische Kanalkürzel:
 | `TRL`, `TRR` | Top Rear links/rechts |
 | `FHL`, `FHR` | Front Height links/rechts |
 | `RHL`, `RHR` | Rear Height links/rechts |
+| `FWL`, `FWR` | Front Wide links/rechts |
+| `SB`, `SBL`, `SBR` | einzelner bzw. linker/rechter Surround Back |
+| `SHL`, `SHR` | Surround Height links/rechts |
+| `CH`, `TS` | Center Height bzw. Top Surround |
+| `FDL`, `FDR`, `SDL`, `SDR`, `BDL`, `BDR` | Dolby-Atmos-Enabled-Lautsprecher |
+
+Beispiel für eine typsichere Kanalabfrage:
+
+```csharp
+var activeChannels = state.Audio?.ActiveSpeakerChannels ?? SpeakerChannel.None;
+var hasFrontWideLeft =
+    (activeChannels & SpeakerChannel.FrontWideLeft) != SpeakerChannel.None;
+```
 
 ## Status regelmäßig aktualisieren
 

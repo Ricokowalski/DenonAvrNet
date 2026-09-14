@@ -31,7 +31,7 @@ try
     Console.WriteLine($"  HTTP-Port:   {receiver.HttpPort}");
 
     await using var monitor = new DenonReceiverMonitor(host);
-    /*monitor.TelnetEventReceived += telnetEvent =>
+    monitor.TelnetEventReceived += telnetEvent =>
     {
         if (telnetEvent.ActiveSpeakerMatrix is { } matrix)
         {
@@ -49,7 +49,6 @@ try
     await monitor.StartAsync(cancellationSource.Token);
     Console.WriteLine("Hintergrundmonitor aktiv (Telnet-Ereignisse + Statusabfrage alle 15 Sekunden).");
 
-    */
     await ShowStatusAsync(receiver, cancellationSource.Token);
 
     while (!cancellationSource.IsCancellationRequested)
@@ -450,12 +449,7 @@ static async Task SetAdditionalZoneInputAsync(
         return;
     }
 
-    var inputs = (await receiver.RefreshInputsAsync(cancellationToken)).ToList();
-
-    if (!inputs.Contains("SOURCE", StringComparer.OrdinalIgnoreCase))
-    {
-        inputs.Add("SOURCE");
-    }
+    var inputs = await receiver.RefreshInputsAsync(cancellationToken);
     Console.WriteLine("Verfügbare Eingänge:");
     for (var index = 0; index < inputs.Count; index++)
     {
