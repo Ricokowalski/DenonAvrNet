@@ -79,6 +79,9 @@ try
             case "D":
                 await RunReadOnlyDiagnosticAsync(receiver, cancellationSource.Token);
                 break;
+            case "T":
+                await ShowTelnetZonesAsync(host, cancellationSource.Token);
+                break;
             case "0":
             case "Q":
                 return;
@@ -120,9 +123,17 @@ static void PrintMenu()
         8  Mute ausschalten
         9  Eingang auswählen
         D  Nur-Lese-Diagnose (5 Statusabfragen)
+        T  Telnet: Zone 2/3 abfragen
         0  Beenden
         """);
     Console.Write("Auswahl: ");
+}
+
+static async Task ShowTelnetZonesAsync(string host, CancellationToken cancellationToken)
+{
+    var telnet = new DenonTelnetClient(host);
+    Console.WriteLine($"  Zone 2: {await telnet.QueryZone2Async(cancellationToken)}");
+    Console.WriteLine($"  Zone 3: {await telnet.QueryZone3Async(cancellationToken)}");
 }
 
 static async Task ExecuteAndRefreshAsync(
