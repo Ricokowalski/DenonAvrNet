@@ -512,7 +512,6 @@ public sealed class DenonAvrClient : IDisposable
             token => SendHttpCommandAsync(DenonEndpoints.SetInput(protocolName), token),
             token => _telnetClient.SetInputAsync(input, token),
             cancellationToken);
-
     }
 
     /// <summary>Reads one speaker channel level through Telnet.</summary>
@@ -588,7 +587,6 @@ public sealed class DenonAvrClient : IDisposable
             _telnetClient.ResetSpeakerLevelsToFactoryDefaultsAsync,
             cancellationToken).ConfigureAwait(false);
     }
-    
 
     /// <summary>Sends a complete Denon HTTP command path.</summary>
     /// <param name="commandPath">Path beginning with <c>/</c>, including any query command.</param>

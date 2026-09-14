@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using DenonAvrNet;
 using DenonAvrNet.Exceptions;
+using DenonAvrNet.Models;
 
 Console.OutputEncoding = Encoding.UTF8;
 
@@ -104,6 +105,9 @@ try
             case "A":
                 await ControlAudioAndSpeakerPresetsAsync(host, receiver, cancellationSource.Token);
                 break;
+            case "L":
+                await ControlSpeakerLevelsAsync(receiver, cancellationSource.Token);
+                break;
             case "0":
             case "Q":
                 return;
@@ -147,10 +151,186 @@ static void PrintMenu()
         D  Nur-Lese-Diagnose (5 Statusabfragen)
         T  Zone 2/3 anzeigen und schalten (Telnet)
         A  Speaker-Presets und Audio-Modi (Telnet)
+        L  Lautsprecher-Kanalpegel (Telnet)
         0  Beenden
         """);
     Console.Write("Auswahl: ");
 }
+
+static async Task ControlSpeakerLevelsAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    while (!cancellationToken.IsCancellationRequested)
+    {
+        Console.WriteLine("""
+
+            ── Lautsprecher-Kanalpegel (Telnet) ──
+            1  Alle konfigurierten Pegel anzeigen
+            2  Kanalpegel direkt setzen
+            3  Kanalpegel schrittweise erhöhen
+            4  Kanalpegel schrittweise verringern
+            5  Subwoofer-Kanal auf OFF setzen
+            W  Alle Kanalpegel auf Denon-Werkswerte zurücksetzen
+            0  Zurück zum Hauptmenü
+            """);
+        Console.Write("Pegel-Auswahl: ");
+        var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
+
+        switch (choice)
+        {
+            case "0":
+            case "":
+            case null:
+                return;
+            case "1":
+                await ShowSpeakerLevelsAsync(receiver, cancellationToken);
+                break;
+            case "2":
+                await SetSpeakerLevelFromConsoleAsync(receiver, cancellationToken);
+                break;
+            case "3":
+                await ChangeSpeakerLevelFromConsoleAsync(receiver, true, cancellationToken);
+                break;
+            case "4":
+                await ChangeSpeakerLevelFromConsoleAsync(receiver, false, cancellationToken);
+                break;
+            case "5":
+                await SetSubwooferLevelOffFromConsoleAsync(receiver, cancellationToken);
+                break;
+            case "W":
+                if (Confirm("Wirklich alle Kanalpegel auf Denon-Werkswerte zurücksetzen?"))
+                {
+                    await receiver.ResetSpeakerLevelsToFactoryDefaultsAsync(
+                        DenonControlProtocol.Telnet,
+                        cancellationToken);
+                    Console.WriteLine("Die Kanalpegel wurden auf Denon-Werkswerte zurückgesetzt.");
+                }
+
+                break;
+            default:
+                Console.WriteLine("Ungültige Auswahl.");
+                break;
+        }
+    }
+}
+
+static async Task ShowSpeakerLevelsAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    var levels = await receiver.GetSpeakerLevelsAsync(DenonControlProtocol.Telnet, cancellationToken);
+    if (levels.Count == 0)
+    {
+        Console.WriteLine("Der Receiver hat keine Kanalpegel zurückgegeben.");
+        return;
+    }
+
+    Console.WriteLine("Konfigurierte Kanalpegel:");
+    foreach (var level in levels.OrderBy(level => level.Channel))
+    {
+        Console.WriteLine($"  {level.Channel,-24} {FormatSpeakerLevel(level)}");
+    }
+}
+
+static async Task SetSpeakerLevelFromConsoleAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    var channel = await SelectSpeakerLevelChannelAsync(receiver, false, cancellationToken);
+    if (channel is null)
+    {
+        return;
+    }
+
+    Console.Write("Neuer Pegel (-12,0 bis +12,0 dB, Schritte von 0,5): ");
+    if (!TryParseGermanOrInvariantDouble(Console.ReadLine()?.Trim(), out var decibels))
+    {
+        Console.WriteLine("Ungültiger Pegel.");
+        return;
+    }
+
+    await receiver.SetSpeakerLevelAsync(channel.Value, decibels, DenonControlProtocol.Telnet, cancellationToken);
+    Console.WriteLine($"{channel.Value}: {decibels:0.0} dB gesetzt.");
+}
+
+static async Task ChangeSpeakerLevelFromConsoleAsync(
+    DenonAvrClient receiver,
+    bool increase,
+    CancellationToken cancellationToken)
+{
+    var channel = await SelectSpeakerLevelChannelAsync(receiver, false, cancellationToken);
+    if (channel is null)
+    {
+        return;
+    }
+
+    await receiver.ChangeSpeakerLevelAsync(
+        channel.Value,
+        increase,
+        DenonControlProtocol.Telnet,
+        cancellationToken);
+    Console.WriteLine($"{channel.Value}: Pegel {(increase ? "erhöht" : "verringert")}.");
+}
+
+static async Task SetSubwooferLevelOffFromConsoleAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    var channel = await SelectSpeakerLevelChannelAsync(receiver, true, cancellationToken);
+    if (channel is null)
+    {
+        return;
+    }
+
+    await receiver.SetSpeakerLevelOffAsync(channel.Value, DenonControlProtocol.Telnet, cancellationToken);
+    Console.WriteLine($"{channel.Value}: OFF gesetzt.");
+}
+
+static async Task<DenonSpeakerLevelChannel?> SelectSpeakerLevelChannelAsync(
+    DenonAvrClient receiver,
+    bool subwoofersOnly,
+    CancellationToken cancellationToken)
+{
+    var levels = await receiver.GetSpeakerLevelsAsync(DenonControlProtocol.Telnet, cancellationToken);
+    var selectableLevels = levels
+        .Where(level => !subwoofersOnly || IsSubwooferChannel(level.Channel))
+        .OrderBy(level => level.Channel)
+        .ToArray();
+
+    if (selectableLevels.Length == 0)
+    {
+        Console.WriteLine(subwoofersOnly
+            ? "Es ist kein konfigurierter Subwoofer-Kanal verfügbar."
+            : "Der Receiver hat keine konfigurierten Kanalpegel zurückgegeben.");
+        return null;
+    }
+
+    Console.WriteLine("Kanal auswählen:");
+    for (var index = 0; index < selectableLevels.Length; index++)
+    {
+        var level = selectableLevels[index];
+        Console.WriteLine($"  {index + 1,2}  {level.Channel,-24} {FormatSpeakerLevel(level)}");
+    }
+
+    Console.Write("Nummer: ");
+    return int.TryParse(Console.ReadLine()?.Trim(), out var selection) &&
+           selection >= 1 && selection <= selectableLevels.Length
+        ? selectableLevels[selection - 1].Channel
+        : null;
+}
+
+static bool IsSubwooferChannel(DenonSpeakerLevelChannel channel) => channel is
+    DenonSpeakerLevelChannel.Subwoofer or
+    DenonSpeakerLevelChannel.Subwoofer2 or
+    DenonSpeakerLevelChannel.Subwoofer3 or
+    DenonSpeakerLevelChannel.Subwoofer4;
+
+static string FormatSpeakerLevel(DenonSpeakerLevel level) => level.IsOff
+    ? "OFF"
+    : level.Decibels is { } decibels
+        ? $"{decibels.ToString("0.0", CultureInfo.GetCultureInfo("de-DE"))} dB"
+        : "unbekannt";
 
 static async Task ControlAdditionalZonesAsync(
     string host,
