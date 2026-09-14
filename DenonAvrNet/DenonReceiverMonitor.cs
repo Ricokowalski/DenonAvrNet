@@ -16,6 +16,7 @@ public sealed class DenonReceiverMonitor : IAsyncDisposable
     private Task? _pollingTask;
     private Task? _eventRefreshTask;
     private int _eventRefreshQueued;
+    private string? _lastActiveSpeakerMatrix;
 
     /// <summary>Creates a monitor with a dedicated HTTP client and a 15-second fallback polling interval.</summary>
     public DenonReceiverMonitor(
@@ -113,6 +114,19 @@ public sealed class DenonReceiverMonitor : IAsyncDisposable
     private void OnTelnetEventReceived(DenonTelnetEvent telnetEvent)
     {
         TelnetEventReceived?.Invoke(telnetEvent);
+
+        // OPINFASP is high-frequency telemetry on the AVC-X6800H. Identical
+        // matrices do not represent a state change and must not cause a full
+        // HTTP refresh several times per second.
+        if (telnetEvent.ActiveSpeakerMatrix is { } matrix)
+        {
+            if (string.Equals(_lastActiveSpeakerMatrix, matrix.RawValues, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastActiveSpeakerMatrix = matrix.RawValues;
+        }
 
         // Receivers often emit several messages for one action. One refresh
         // after a short coalescing window is sufficient and avoids a request burst.

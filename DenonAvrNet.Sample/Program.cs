@@ -31,8 +31,25 @@ try
     Console.WriteLine($"  HTTP-Port:   {receiver.HttpPort}");
 
     await using var monitor = new DenonReceiverMonitor(host);
-    await monitor.StartAsync(cancellationSource.Token);
+    /*monitor.TelnetEventReceived += telnetEvent =>
+    {
+        if (telnetEvent.ActiveSpeakerMatrix is { } matrix)
+        {
+            Console.WriteLine(
+                $"\n[Telnet {telnetEvent.Timestamp:HH:mm:ss}] Aktive Lautsprecher: " +
+                $"{matrix.ActivePositionCount}/{matrix.PositionCount} Ausgangspositionen " +
+                $"(Matrix: {matrix.RawValues})");
+            return;
+        }
 
+        Console.WriteLine($"\n[Telnet {telnetEvent.Timestamp:HH:mm:ss}] {telnetEvent.Message}");
+    };
+    monitor.Error += exception =>
+        Console.Error.WriteLine($"\n[Monitor] {exception.Message}");
+    await monitor.StartAsync(cancellationSource.Token);
+    Console.WriteLine("Hintergrundmonitor aktiv (Telnet-Ereignisse + Statusabfrage alle 15 Sekunden).");
+
+    */
     await ShowStatusAsync(receiver, cancellationSource.Token);
 
     while (!cancellationSource.IsCancellationRequested)

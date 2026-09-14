@@ -43,6 +43,7 @@ der Statusschnittstelle auf Port `80` werden ebenfalls berücksichtigt.
   - Eingang auswählen
 - dauerhafte Statusüberwachung für Headless-Betrieb:
   - Telnet-Ereignisse werden sofort empfangen
+  - `OPINFASP`-Speaker-Matrizen werden dekodiert und doppelte Telemetrie wird gefiltert
   - automatisches Wiederverbinden nach einer Telnet-Unterbrechung
   - HTTP-Statusabfrage alle 15 Sekunden als Rückfallebene
 - beliebige rohe Denon-HTTP-Befehlspfade senden

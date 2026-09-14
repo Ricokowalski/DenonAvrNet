@@ -136,8 +136,8 @@ await zones.SetZone3InputAsync("CBL/SAT");      // sendet Z3SAT/CBL
 ### `DenonReceiverMonitor` – Ereignisse und Rückfall-Polling
 
 `DenonReceiverMonitor` öffnet eine dauerhafte Telnet-Verbindung auf Port 23.
-Jede vom Receiver gesendete Statusmeldung löst über `TelnetEventReceived` sofort
-eine Aktualisierung aus. Parallel wird der vollständige HTTP-Status standardmäßig
+Jede relevante vom Receiver gesendete Statusmeldung löst über `TelnetEventReceived`
+sofort eine Aktualisierung aus. Parallel wird der vollständige HTTP-Status standardmäßig
 alle 15 Sekunden neu gelesen. Nach einem Verbindungsabbruch verbindet sich der
 Telnet-Listener automatisch erneut.
 
@@ -161,6 +161,60 @@ await monitor.StartAsync();
 ```
 
 `CurrentState` enthält stets den letzten erfolgreichen Status-Snapshot.
+
+#### `OPINFASP`: aktive Lautsprecher-Ausgänge
+
+Der AVC-X6800H sendet während der Wiedergabe wiederholt Meldungen wie:
+
+```text
+OPINFASP 22222200222000022000000002200000
+```
+
+`OPINFASP` ist eine kompakte Matrix der Lautsprecher-Ausgangspositionen. Die
+32 Stellen werden von links nach rechts nummeriert. `2` bedeutet *aktiv*, `0`
+bedeutet *nicht aktiv bzw. nicht verfügbar*. Im Beispiel sind die Positionen
+`1–6`, `9–11`, `16–17` und `26–27` aktiv – also **13 aktive Ausgangspositionen**.
+
+Die genaue Zuordnung der 32 Positionen zu Kanalnamen veröffentlicht Denon nicht.
+Für belastbare Namen wie `FL`, `C`, `SW`, `TFL` oder `TRR` ist deshalb weiterhin
+`state.Audio.ActiveSpeakers` aus der HTTP-Abfrage `GetActiveSpeaker` maßgeblich.
+
+Der Event stellt die bereits dekodierte Matrix bereit:
+
+```csharp
+monitor.TelnetEventReceived += item =>
+{
+    if (item.ActiveSpeakerMatrix is { } speakers)
+    {
+        Console.WriteLine($"{speakers.ActivePositionCount}/{speakers.PositionCount} aktiv");
+        Console.WriteLine(string.Join(", ", speakers.ActivePositions));
+    }
+};
+```
+
+Wiederholte identische `OPINFASP`-Matrizen lösen im Monitor **keine** zusätzliche
+HTTP-Aktualisierung mehr aus. Bei einer geänderten Matrix wird der Status einmal
+neu geladen; dadurch liefert `StateRefreshed` anschließend die kanalgenauen Namen.
+
+### Speaker-Presets und Audio-Modi über `DenonTelnetClient`
+
+```csharp
+var telnet = new DenonTelnetClient("10.37.0.190");
+
+await telnet.SelectSpeakerPresetAsync(1);          // SPPR 1
+await telnet.SelectSpeakerPresetAsync(2);          // SPPR 2
+
+await telnet.SetSurroundModeAsync("Dolby Surround");
+await telnet.SetSurroundModeAsync("DTS Neural:X");
+await telnet.SetSurroundModeAsync("Pure Direct");
+
+await telnet.SetDigitalInputModeAsync("Auto");    // DCAUTO
+await telnet.SetDigitalInputModeAsync("PCM");     // DCPCM
+await telnet.SetDigitalInputModeAsync("DTS");     // DCDTS
+```
+
+Die Speaker-Presets selbst werden im Setup-Menü des Receivers konfiguriert;
+die Bibliothek schaltet zwischen Preset 1 und 2 um.
 
 ### `RefreshInputsAsync`
 
