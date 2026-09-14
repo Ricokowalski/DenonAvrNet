@@ -1,5 +1,6 @@
 ﻿using System.Globalization;
 using System.Net.Sockets;
+using System.Xml.Linq;
 using DenonAvrNet.Exceptions;
 using DenonAvrNet.Models;
 using DenonAvrNet.Protocol;
@@ -10,6 +11,7 @@ namespace DenonAvrNet;
 /// <summary>Controls a Denon or compatible Marantz receiver through its HTTP/XML API.</summary>
 public sealed class DenonAvrClient : IDisposable
 {
+    private const int SpeakerSetupHttpPort = 11080;
     private readonly DenonHttpTransport _httpTransport;
     private readonly DenonTelnetClient _telnetClient;
     private readonly bool _ownsTransport;
@@ -197,7 +199,8 @@ public sealed class DenonAvrClient : IDisposable
         AvrFeature.MainZoneInput => HttpAndTelnet,
         AvrFeature.MainZoneStatus or
         AvrFeature.AudioInformation or
-        AvrFeature.ActiveSpeakerStatus => HttpOnly,
+        AvrFeature.ActiveSpeakerStatus or
+        AvrFeature.SpeakerPresetLevelControl => HttpOnly,
         AvrFeature.Zone2Control or
         AvrFeature.Zone3Control or
         AvrFeature.LiveEvents or
@@ -588,6 +591,57 @@ public sealed class DenonAvrClient : IDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Sets a speaker-preset level through the receiver's current web interface.
+    /// The index is the <c>Speaker index</c> used by that interface; values use 0.1 dB units.
+    /// </summary>
+    public Task SetSpeakerPresetLevelAsync(
+        int speakerIndex,
+        double decibels,
+        CancellationToken cancellationToken = default)
+    {
+        if (speakerIndex < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(speakerIndex));
+        }
+
+        if (decibels is < -12.0 or > 12.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(decibels), "Der Pegel muss zwischen -12,0 und +12,0 dB liegen.");
+        }
+
+        var tenthsOfDecibels = (int)Math.Round(decibels * 10, MidpointRounding.AwayFromZero);
+        return SendSpeakerSetupHttpCommandAsync(
+            DenonEndpoints.SetSpeakerPresetLevel(speakerIndex, tenthsOfDecibels),
+            cancellationToken);
+    }
+
+    /// <summary>Reads the actual levels of the active speaker preset from the receiver web interface.</summary>
+    public async Task<IReadOnlyList<DenonSpeakerPresetLevel>> GetSpeakerPresetLevelsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _httpTransport.GetStringAsync(
+            Host,
+            SpeakerSetupHttpPort,
+            DenonEndpoints.SpeakerPresetLevels(),
+            cancellationToken).ConfigureAwait(false);
+
+        var document = XDocument.Parse(response);
+        return document.Descendants("Speaker")
+            .Select(element => new
+            {
+                Index = (int?)element.Attribute("index"),
+                Value = element.Value
+            })
+            .Where(item => item.Index is not null &&
+                           int.TryParse(item.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            .Select(item => new DenonSpeakerPresetLevel(
+                item.Index!.Value,
+                int.Parse(item.Value, CultureInfo.InvariantCulture) / 10.0))
+            .OrderBy(level => level.SpeakerIndex)
+            .ToArray();
+    }
+
     /// <summary>Sends a complete Denon HTTP command path.</summary>
     /// <param name="commandPath">Path beginning with <c>/</c>, including any query command.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
@@ -628,6 +682,12 @@ public sealed class DenonAvrClient : IDisposable
     {
         var port = GetInitializedPort();
         _ = await _httpTransport.GetStringAsync(Host, port, commandPath, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task SendSpeakerSetupHttpCommandAsync(string commandPath, CancellationToken cancellationToken)
+    {
+        _ = await _httpTransport.GetStringAsync(Host, SpeakerSetupHttpPort, commandPath, cancellationToken)
             .ConfigureAwait(false);
     }
 

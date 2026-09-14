@@ -41,10 +41,11 @@ der Statusschnittstelle auf Port `80` werden ebenfalls berücksichtigt.
   - Lautstärke erhöhen, verringern oder absolut in dB setzen
   - Mute ein-/ausschalten
   - Eingang auswählen
-- Lautsprecher-Kanalpegel über Telnet lesen und steuern:
+- temporäre Kanalpegel des aktuellen Surroundmodus über Telnet (`CV`) lesen und steuern:
   - einzelne Kanäle sowie alle konfigurierten Kanäle lesen (`CV?` / `CVEND`)
   - Werte von -12,0 bis +12,0 dB setzen oder schrittweise ändern
   - Subwoofer-Kanäle auf OFF setzen und alle Kanalpegel auf Denon-Werkswerte zurücksetzen
+- tatsächliche Pegel des aktiven Speaker-Presets der aktuellen Weboberfläche über HTTP-Port 11080 lesen und setzen
 - dauerhafte Statusüberwachung für Headless-Betrieb:
   - Telnet-Ereignisse werden sofort empfangen
   - `OPINFASP`-Speaker-Matrizen werden dekodiert und doppelte Telemetrie wird gefiltert
@@ -137,6 +138,22 @@ Bei `Auto` wird nach erfolgreicher HTTP-Initialisierung zunächst HTTP verwendet
 Antwortet der HTTP-Steuerbefehl mit einem Netzwerk-/HTTP-Fehler wie `403`, versucht
 die Bibliothek Telnet. Wird explizit `Http` oder `Telnet` gewählt, gibt es keinen
 Fallback – das macht Diagnose und vorhersehbares Verhalten möglich.
+
+### Speaker-Preset-Pegel der Weboberfläche
+
+Die Werte unter **Setup → Speakers → Levels** sind nicht identisch mit den
+Telnet-`CV`-Werten. Für den AVC-X6800H liest und setzt die Library diese
+Speaker-Preset-Werte über die separate Weboberfläche auf Port `11080`:
+
+```csharp
+var levels = await receiver.GetSpeakerPresetLevelsAsync();
+await receiver.SetSpeakerPresetLevelAsync(speakerIndex: 2, decibels: -3.5);
+```
+
+`SpeakerIndex` entspricht dem vom Receiver gelieferten Weboberflächen-Index.
+Der Sample-Menüpunkt `L → 1` zeigt die aktuellen Werte samt Index; `L → H`
+setzt einen Wert. Der Testton ist noch nicht implementiert: bisher ist nur der
+Stop-Befehl der Weboberfläche bestätigt, nicht der eindeutige Start-Befehl.
 
 ### Feature- und Gerätefähigkeiten
 

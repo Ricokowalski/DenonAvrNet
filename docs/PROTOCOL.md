@@ -226,9 +226,14 @@ Parameter `?`; Ereignisse und Antworten verwenden dieselbe Zeilenform wie ein
 Befehl.
 
 `DenonAvrNet` verwendet Telnet für Main-Zone-Steuerung, Zone 2/3,
-Speaker-Presets, Soundmodi, Decoder, Ereignisse und Kanalpegel.
+Speaker-Presets, Soundmodi, Decoder, Ereignisse und die temporären
+Kanalpegel des aktuellen Surroundmodus.
 
-### Kanalpegel: `CV`
+### Temporäre Kanalpegel: `CV`
+
+`CV` ist nicht die dauerhafte Einstellung unter **Setup → Speakers → Levels**.
+Es beschreibt die Kanalpegel im aktuellen Surroundmodus; unberührte Kanäle
+können als `50` (= `0,0 dB`) gemeldet werden.
 
 Die Kanalpegel liegen zwischen `38` und `62`: `50` entspricht `0,0 dB`;
 `38` entspricht `-12,0 dB`; `62` entspricht `+12,0 dB`. Halbe Dezibelwerte
@@ -251,3 +256,20 @@ sie in `DenonSpeakerLevel`-Werte um.
 
 Die Befehlscodes entsprechen dem offiziellen Denon-Control-Protocol für
 TCP-Port 23 und dem darin beschriebenen `CV`-Antwortformat.
+
+## Speaker-Preset-Pegel der Weboberfläche (HTTP-Port 11080)
+
+Beim AVC-X6800H liegt die moderne Weboberfläche getrennt von der normalen
+HTTP/XML-API auf Port `11080`. Die echten Werte der Seite **Levels** werden
+mit folgenden GET-Aufrufen gelesen bzw. gesetzt:
+
+| Zweck | Pfad |
+| --- | --- |
+| Pegel des aktiven Speaker-Presets lesen | `/ajax/speakers/get_config?type=20&_=…` |
+| Speaker-Index 2 auf -3,5 dB setzen | `/ajax/speakers/set_config?type=20&data=%3CSpeaker%20index%3D%222%22%3E-35%3C%2FSpeaker%3E&_=…` |
+
+Der Wert innerhalb von `Speaker` ist ein Zehntel-dB-Wert (`-35` = `-3,5 dB`).
+`DenonAvrClient.GetSpeakerPresetLevelsAsync()` und
+`SetSpeakerPresetLevelAsync()` verwenden diesen Port automatisch. Der
+Testton-Start ist noch nicht dokumentiert/implementiert; beobachtet wurde nur
+`<StopTestTone></StopTestTone>`.

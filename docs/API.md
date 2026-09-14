@@ -159,7 +159,7 @@ var eventTransport = receiver.GetSupportedProtocols(AvrFeature.LiveEvents);
 | `AvrFeature` | Transport in der Library |
 | --- | --- |
 | `MainZonePower`, `MainZoneVolume`, `MainZoneMute`, `MainZoneInput` | HTTP und Telnet |
-| `MainZoneStatus`, `AudioInformation`, `ActiveSpeakerStatus` | HTTP |
+| `MainZoneStatus`, `AudioInformation`, `ActiveSpeakerStatus`, `SpeakerPresetLevelControl` | HTTP |
 | `Zone2Control`, `Zone3Control`, `LiveEvents`, `ChannelLevelRead`, `ChannelLevelControl`, `SpeakerPresetControl`, `SurroundModeControl`, `DigitalInputModeControl` | Telnet |
 
 `DenonReceiverCapabilities` beschreibt dagegen das **erkannte AVR-Modell**.
@@ -212,9 +212,12 @@ await zones.SetZone3InputAsync("CBL/SAT");      // sendet Z3SAT/CBL
 `SetZone2VolumeAsync()` und `SetZone3VolumeAsync()` akzeptieren Werte von
 `-80,0` bis `+18,0 dB` und runden auf halbe dB-Schritte.
 
-### Lautsprecher-Kanalpegel über Telnet
+### Temporäre Lautsprecher-Kanalpegel über Telnet
 
-`DenonTelnetClient` unterstützt Denons `CV`-Befehle für einzelne Kanalpegel.
+`DenonTelnetClient` unterstützt Denons `CV`-Befehle für die temporären
+Kanalpegel des aktuellen Surroundmodus. Diese Werte sind **nicht** identisch
+mit den dauerhaften Werten unter **Setup → Speakers → Levels** der
+Weboberfläche.
 `DenonSpeakerLevelChannel` ist absichtlich kein Flags-Enum: Jeder Ausgang –
 auch `Subwoofer`, `Subwoofer2`, `Subwoofer3` und `Subwoofer4` – ist ein eigener
 schreibbarer Zielkanal.
@@ -252,6 +255,35 @@ Konfiguration des Receivers vorhanden sind. `SetSpeakerLevelAsync()` akzeptiert
 für Subwoofer-Kanäle zulässig. `ResetSpeakerLevelsToFactoryDefaultsAsync()`
 setzt die Pegel auf Denon-Werkswerte zurück; die Library speichert oder stellt
 keinen vorherigen Sitzungssnapshot wieder her.
+
+### Speaker-Preset-Pegel der Weboberfläche (HTTP)
+
+Die tatsächlichen Werte des aktiven Speaker-Presets werden beim AVC-X6800H
+über die getrennte Weboberfläche auf Port `11080` gelesen und gesetzt. Der Port
+ist bewusst unabhängig von `HttpPort` (typischerweise `8080`) der normalen
+HTTP/XML-API.
+
+```csharp
+var presetLevels = await receiver.GetSpeakerPresetLevelsAsync();
+
+foreach (var level in presetLevels)
+{
+    Console.WriteLine($"{level.SpeakerIndex}: {level.Decibels:0.0} dB");
+}
+
+await receiver.SetSpeakerPresetLevelAsync(speakerIndex: 2, decibels: -3.5);
+```
+
+`GetSpeakerPresetLevelsAsync()` liest `/ajax/speakers/get_config?type=20`.
+`SetSpeakerPresetLevelAsync()` sendet den Wert als Zehntel-dB (`-35` für
+`-3,5 dB`) an `/ajax/speakers/set_config?type=20`. `SpeakerIndex` ist der
+vom Receiver gelieferten Weboberflächen-Index und keine
+`DenonSpeakerLevelChannel`-Enum-Nummer.
+
+Für den Testton ist bisher nur der Stopp-Aufruf
+`<StopTestTone></StopTestTone>` beobachtet worden. Die Library implementiert
+deshalb noch keinen Start- oder Stopp-Befehl, bis der zugehörige Start-Request
+eindeutig aufgezeichnet ist.
 
 Weitere lesende Telnet-Abfragen sind verfügbar über `QueryPowerAsync()`,
 `QueryVolumeAsync()`, `QueryMuteAsync()`, `QueryInputAsync()`,
@@ -472,6 +504,13 @@ Diese Methode prüft nicht, ob der Receiver den übergebenen Befehl unterstützt
 | `Decibels` | `double?` | Kanalpegel; bei `OFF` `null` |
 | `IsOff` | `bool` | gibt an, ob der Receiver den Kanal mit `00`/`OFF` gemeldet hat |
 | `RawResponse` | `string` | originale Telnet-Antwort, z. B. `CVFL 505` |
+
+## `DenonSpeakerPresetLevel`
+
+| Eigenschaft | Typ | Beschreibung |
+| --- | --- | --- |
+| `SpeakerIndex` | `int` | Index der modernen Denon-Weboberfläche auf Port 11080 |
+| `Decibels` | `double` | tatsächlicher Pegel des aktiven Speaker-Presets |
 
 ## `DenonDeviceInfo`
 

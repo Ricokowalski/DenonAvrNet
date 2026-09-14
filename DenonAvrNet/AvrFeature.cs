@@ -16,6 +16,7 @@ public enum AvrFeature
     LiveEvents,
     ChannelLevelRead,
     ChannelLevelControl,
+    SpeakerPresetLevelControl,
     AudioInformation,
     ActiveSpeakerStatus,
     SpeakerPresetControl,

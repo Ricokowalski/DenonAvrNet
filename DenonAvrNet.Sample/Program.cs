@@ -166,11 +166,12 @@ static async Task ControlSpeakerLevelsAsync(
         Console.WriteLine("""
 
             ── Lautsprecher-Kanalpegel (Telnet) ──
-            1  Alle konfigurierten Pegel anzeigen
+            1  Alle Speaker-Preset-Pegel anzeigen (HTTP)
             2  Kanalpegel direkt setzen
             3  Kanalpegel schrittweise erhöhen
             4  Kanalpegel schrittweise verringern
             5  Subwoofer-Kanal auf OFF setzen
+            H  Speaker-Preset-Pegel per HTTP setzen (echte Setup-Werte)
             W  Alle Kanalpegel auf Denon-Werkswerte zurücksetzen
             0  Zurück zum Hauptmenü
             """);
@@ -198,6 +199,9 @@ static async Task ControlSpeakerLevelsAsync(
             case "5":
                 await SetSubwooferLevelOffFromConsoleAsync(receiver, cancellationToken);
                 break;
+            case "H":
+                await SetSpeakerPresetLevelFromConsoleAsync(receiver, cancellationToken);
+                break;
             case "W":
                 if (Confirm("Wirklich alle Kanalpegel auf Denon-Werkswerte zurücksetzen?"))
                 {
@@ -215,21 +219,43 @@ static async Task ControlSpeakerLevelsAsync(
     }
 }
 
+static async Task SetSpeakerPresetLevelFromConsoleAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    Console.Write("Speaker-Index aus der Weboberfläche: ");
+    if (!int.TryParse(Console.ReadLine()?.Trim(), out var speakerIndex) || speakerIndex < 0)
+    {
+        Console.WriteLine("Ungültiger Speaker-Index.");
+        return;
+    }
+
+    Console.Write("Neuer Speaker-Preset-Pegel (-12,0 bis +12,0 dB): ");
+    if (!TryParseGermanOrInvariantDouble(Console.ReadLine()?.Trim(), out var decibels))
+    {
+        Console.WriteLine("Ungültiger Pegel.");
+        return;
+    }
+
+    await receiver.SetSpeakerPresetLevelAsync(speakerIndex, decibels, cancellationToken);
+    Console.WriteLine($"Speaker-Index {speakerIndex}: {decibels:0.0} dB im Speaker Preset gesetzt.");
+}
+
 static async Task ShowSpeakerLevelsAsync(
     DenonAvrClient receiver,
     CancellationToken cancellationToken)
 {
-    var levels = await receiver.GetSpeakerLevelsAsync(DenonControlProtocol.Telnet, cancellationToken);
+    var levels = await receiver.GetSpeakerPresetLevelsAsync(cancellationToken);
     if (levels.Count == 0)
     {
         Console.WriteLine("Der Receiver hat keine Kanalpegel zurückgegeben.");
         return;
     }
 
-    Console.WriteLine("Konfigurierte Kanalpegel:");
-    foreach (var level in levels.OrderBy(level => level.Channel))
+    Console.WriteLine("Aktive Speaker-Preset-Pegel:");
+    foreach (var level in levels)
     {
-        Console.WriteLine($"  {level.Channel,-24} {FormatSpeakerLevel(level)}");
+        Console.WriteLine($"  Speaker-Index {level.SpeakerIndex,2}: {level.Decibels:0.0} dB");
     }
 }
 

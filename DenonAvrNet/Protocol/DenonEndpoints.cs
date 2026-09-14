@@ -2,6 +2,8 @@
 
 internal static class DenonEndpoints
 {
+    internal static string SpeakerPresetLevels() =>
+        $"/ajax/speakers/get_config?type=20&_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
     internal const string DeviceInfo = "/goform/Deviceinfo.xml";
     internal const string AppCommand = "/goform/AppCommand.xml";
     internal const string AppCommand0300 = "/goform/AppCommand0300.xml";
@@ -23,5 +25,11 @@ internal static class DenonEndpoints
         var escapedInput = Uri.EscapeDataString(input)
             .Replace("%2F", "/", StringComparison.OrdinalIgnoreCase);
         return $"/goform/formiPhoneAppDirect.xml?SI{escapedInput}";
+    }
+
+    internal static string SetSpeakerPresetLevel(int speakerIndex, int tenthsOfDecibels)
+    {
+        var data = $"<Speaker index=\"{speakerIndex}\">{tenthsOfDecibels}</Speaker>";
+        return $"/ajax/speakers/set_config?type=20&data={Uri.EscapeDataString(data)}&_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
     }
 }
