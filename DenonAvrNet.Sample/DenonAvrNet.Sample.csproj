@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DenenAvrNet\DenonAvrNet.csproj" />
+    <ProjectReference Include="..\DenonAvrNet\DenonAvrNet.csproj" />
   </ItemGroup>
 
 </Project>
