@@ -1,5 +1,6 @@
 ﻿namespace DenonAvrNet.Models;
 
+/// <summary>Represents an immutable, confirmed Main Zone status snapshot.</summary>
 public sealed record DenonReceiverState(
     bool IsPoweredOn,
     string Power,

@@ -13,6 +13,9 @@ public sealed class DenonAvrClient : IDisposable
     private readonly bool _ownsTransport;
     private bool _disposed;
 
+    /// <summary>Creates a client for a receiver host or IP address.</summary>
+    /// <param name="host">Receiver hostname, IP address or HTTP(S) base address.</param>
+    /// <param name="requestTimeout">Optional timeout; defaults to five seconds.</param>
     public DenonAvrClient(string host, TimeSpan? requestTimeout = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(host);
@@ -30,14 +33,22 @@ public sealed class DenonAvrClient : IDisposable
         _httpTransport = httpTransport ?? throw new ArgumentNullException(nameof(httpTransport));
     }
 
+    /// <summary>Gets the normalized receiver hostname or IP address.</summary>
     public string Host { get; }
 
+    /// <summary>Gets the HTTP port detected by <see cref="InitializeAsync"/>.</summary>
     public int? HttpPort { get; private set; }
 
+    /// <summary>Gets the device information returned by the last initialization.</summary>
     public DenonDeviceInfo? DeviceInfo { get; private set; }
 
+    /// <summary>Gets the most recently confirmed receiver state.</summary>
     public DenonReceiverState? State { get; private set; }
 
+    /// <summary>Detects the receiver API and reads its device information.</summary>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The detected device information.</returns>
+    /// <exception cref="DenonConnectionException">No supported API endpoint responded.</exception>
     public async Task<DenonDeviceInfo> InitializeAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -72,6 +83,11 @@ public sealed class DenonAvrClient : IDisposable
             new AggregateException(failures));
     }
 
+    /// <summary>Reads and stores a confirmed Main Zone status snapshot.</summary>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>The newly read receiver state.</returns>
+    /// <exception cref="InvalidOperationException">The client has not been initialized.</exception>
+    /// <exception cref="DenonProtocolException">The receiver returned no usable basic state.</exception>
     public async Task<DenonReceiverState> UpdateAsync(CancellationToken cancellationToken = default)
     {
         var port = GetInitializedPort();
@@ -173,18 +189,25 @@ public sealed class DenonAvrClient : IDisposable
         }
     }
 
+    /// <summary>Switches the Main Zone on.</summary>
     public Task PowerOnAsync(CancellationToken cancellationToken = default) =>
         SendCommandAsync(DenonEndpoints.PowerOn, cancellationToken);
 
+    /// <summary>Switches the Main Zone to standby.</summary>
     public Task PowerOffAsync(CancellationToken cancellationToken = default) =>
         SendCommandAsync(DenonEndpoints.PowerStandby, cancellationToken);
 
+    /// <summary>Raises the Main Zone volume by one receiver step.</summary>
     public Task VolumeUpAsync(CancellationToken cancellationToken = default) =>
         SendCommandAsync(DenonEndpoints.VolumeUp, cancellationToken);
 
+    /// <summary>Lowers the Main Zone volume by one receiver step.</summary>
     public Task VolumeDownAsync(CancellationToken cancellationToken = default) =>
         SendCommandAsync(DenonEndpoints.VolumeDown, cancellationToken);
 
+    /// <summary>Sets the Main Zone volume, rounded to a half-decibel step.</summary>
+    /// <param name="volumeDb">Volume from -80.0 through +18.0 dB.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
     public Task SetVolumeAsync(double volumeDb, CancellationToken cancellationToken = default)
     {
         if (volumeDb is < -80.0 or > 18.0)
@@ -200,9 +223,15 @@ public sealed class DenonAvrClient : IDisposable
         return SendCommandAsync(DenonEndpoints.SetVolume(value), cancellationToken);
     }
 
+    /// <summary>Enables or disables Main Zone muting.</summary>
+    /// <param name="muted"><see langword="true"/> to mute; otherwise <see langword="false"/>.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
     public Task SetMuteAsync(bool muted, CancellationToken cancellationToken = default) =>
         SendCommandAsync(muted ? DenonEndpoints.MuteOn : DenonEndpoints.MuteOff, cancellationToken);
 
+    /// <summary>Selects a Main Zone input using a display or Denon protocol name.</summary>
+    /// <param name="input">Input such as <c>CBL/SAT</c>, <c>Media Player</c> or <c>MPLAY</c>.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
     public Task SetInputAsync(string input, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(input);
@@ -216,6 +245,9 @@ public sealed class DenonAvrClient : IDisposable
         return SendCommandAsync(DenonEndpoints.SetInput(protocolName), cancellationToken);
     }
 
+    /// <summary>Sends a complete Denon HTTP command path.</summary>
+    /// <param name="commandPath">Path beginning with <c>/</c>, including any query command.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
     public async Task SendCommandAsync(
         string commandPath,
         CancellationToken cancellationToken = default)
@@ -230,6 +262,7 @@ public sealed class DenonAvrClient : IDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
     public void Dispose()
     {
         if (_disposed)
