@@ -109,8 +109,29 @@ mit gleichzeitig eintreffenden AppCommand-Anfragen vermieden.
 
 Der Status-Snapshot enthält bei Receivern mit weiteren Zonen zusätzlich `Zone2`
 und `Zone3`. Jeder dieser optionalen `DenonZoneState`-Werte enthält Power,
-Eingang, Lautstärke und Mute. Steuerbefehle für diese Zonen sind noch nicht Teil
-der öffentlichen API.
+Eingang, Lautstärke und Mute.
+
+### `DenonTelnetClient` – Zone 2 und Zone 3 steuern
+
+Für die zusätzlichen Zonen verwendet die Bibliothek Denons Telnet-Protokoll auf
+Port 23. Das Konsolenbeispiel stellt die vollständige Zonensteuerung über den
+Menüpunkt `T` bereit. Der Status selbst wird weiterhin über die HTTP-API gelesen,
+weil eine Telnet-Antwort wie `Z3SOURCE` nur den hinterlegten Eingang, nicht den
+Stromzustand beschreibt.
+
+```csharp
+var zones = new DenonTelnetClient("10.37.0.190");
+
+await zones.SetZone2PowerAsync(true);
+await zones.SetZone2VolumeAsync(-35.5);
+await zones.SetZone2MuteAsync(false);
+await zones.SetZone2InputAsync("MEDIA PLAYER"); // sendet Z2MPLAY
+
+await zones.SetZone3InputAsync("CBL/SAT");      // sendet Z3SAT/CBL
+```
+
+`SetZone2VolumeAsync()` und `SetZone3VolumeAsync()` akzeptieren Werte von
+`-80,0` bis `+18,0 dB` und runden auf halbe dB-Schritte.
 
 ### `RefreshInputsAsync`
 

@@ -1,5 +1,6 @@
 using System.Net.Sockets;
 using System.Text;
+using DenonAvrNet.Protocol;
 
 namespace DenonAvrNet;
 
@@ -90,4 +91,70 @@ public sealed class DenonTelnetClient
     /// <summary>Switches Zone 3 on or off.</summary>
     public Task<string> SetZone3PowerAsync(bool on, CancellationToken cancellationToken = default) =>
         SendCommandAsync(on ? "Z3ON" : "Z3OFF", cancellationToken);
+
+    /// <summary>Raises or lowers Zone 2 volume by one receiver step.</summary>
+    public Task<string> ChangeZone2VolumeAsync(bool increase, CancellationToken cancellationToken = default) =>
+        SendCommandAsync(increase ? "Z2UP" : "Z2DOWN", cancellationToken);
+
+    /// <summary>Raises or lowers Zone 3 volume by one receiver step.</summary>
+    public Task<string> ChangeZone3VolumeAsync(bool increase, CancellationToken cancellationToken = default) =>
+        SendCommandAsync(increase ? "Z3UP" : "Z3DOWN", cancellationToken);
+
+    /// <summary>Sets Zone 2 volume from -80.0 through +18.0 dB.</summary>
+    public Task<string> SetZone2VolumeAsync(double volumeDb, CancellationToken cancellationToken = default) =>
+        SendCommandAsync($"Z2{ToTelnetVolumeValue(volumeDb)}", cancellationToken);
+
+    /// <summary>Sets Zone 3 volume from -80.0 through +18.0 dB.</summary>
+    public Task<string> SetZone3VolumeAsync(double volumeDb, CancellationToken cancellationToken = default) =>
+        SendCommandAsync($"Z3{ToTelnetVolumeValue(volumeDb)}", cancellationToken);
+
+    /// <summary>Enables or disables Zone 2 muting.</summary>
+    public Task<string> SetZone2MuteAsync(bool muted, CancellationToken cancellationToken = default) =>
+        SendCommandAsync(muted ? "Z2MUON" : "Z2MUOFF", cancellationToken);
+
+    /// <summary>Enables or disables Zone 3 muting.</summary>
+    public Task<string> SetZone3MuteAsync(bool muted, CancellationToken cancellationToken = default) =>
+        SendCommandAsync(muted ? "Z3MUON" : "Z3MUOFF", cancellationToken);
+
+    /// <summary>Selects a Zone 2 input using a display or Denon protocol name.</summary>
+    public Task<string> SetZone2InputAsync(string input, CancellationToken cancellationToken = default) =>
+        SetZoneInputAsync("Z2", input, cancellationToken);
+
+    /// <summary>Selects a Zone 3 input using a display or Denon protocol name.</summary>
+    public Task<string> SetZone3InputAsync(string input, CancellationToken cancellationToken = default) =>
+        SetZoneInputAsync("Z3", input, cancellationToken);
+
+    private Task<string> SetZoneInputAsync(
+        string zonePrefix,
+        string input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(input);
+        if (input.Contains('\r') || input.Contains('\n'))
+        {
+            throw new ArgumentException("Der Eingangsname darf keinen Zeilenumbruch enthalten.", nameof(input));
+        }
+
+        var protocolName = DenonInputSource.ToProtocolName(input.Trim());
+        return SendCommandAsync($"{zonePrefix}{protocolName}", cancellationToken);
+    }
+
+    private static string ToTelnetVolumeValue(double volumeDb)
+    {
+        if (volumeDb is < -80.0 or > 18.0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(volumeDb),
+                volumeDb,
+                "Die Lautstärke muss zwischen -80,0 und +18,0 dB liegen.");
+        }
+
+        var roundedVolume = Math.Round(volumeDb * 2, MidpointRounding.ToEven) / 2.0;
+        var protocolValue = roundedVolume + 80.0;
+        var wholeValue = (int)Math.Floor(protocolValue);
+
+        return protocolValue - wholeValue >= 0.5
+            ? $"{wholeValue:00}5"
+            : $"{wholeValue:00}";
+    }
 }

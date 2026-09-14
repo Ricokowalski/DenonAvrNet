@@ -136,38 +136,73 @@ static async Task ControlAdditionalZonesAsync(
 {
     var telnet = new DenonTelnetClient(host);
 
-    // Z2?/Z3? can return the stored source (for example Z3SOURCE). That is
-    // not a power response. The HTTP status snapshot contains both values and
-    // is therefore the authoritative display for the zones.
-    await ShowAdditionalZonesAsync(receiver, cancellationToken);
-
-    Console.Write("Zonenbefehl [2=Z2 ein, 3=Z2 aus, 4=Z3 ein, 5=Z3 aus, Enter=zurück]: ");
-    var choice = Console.ReadLine()?.Trim();
-
-    switch (choice)
+    while (!cancellationToken.IsCancellationRequested)
     {
-        case "":
-        case null:
-            return;
-        case "2":
-            await telnet.SetZone2PowerAsync(true, cancellationToken);
-            break;
-        case "3":
-            await telnet.SetZone2PowerAsync(false, cancellationToken);
-            break;
-        case "4":
-            await telnet.SetZone3PowerAsync(true, cancellationToken);
-            break;
-        case "5":
-            await telnet.SetZone3PowerAsync(false, cancellationToken);
-            break;
-        default:
-            Console.WriteLine("Ungültige Auswahl.");
-            return;
-    }
+        // Z2?/Z3? can return the stored source (for example Z3SOURCE). That is
+        // not a power response. The HTTP snapshot contains both independent
+        // values and is therefore authoritative for the displayed state.
+        await ShowAdditionalZonesAsync(receiver, cancellationToken);
 
-    await Task.Delay(350, cancellationToken);
-    await ShowAdditionalZonesAsync(receiver, cancellationToken);
+        Console.WriteLine("""
+
+            1  Zone 2 einschalten       2  Zone 2 ausschalten
+            3  Zone 3 einschalten       4  Zone 3 ausschalten
+            5  Zone 2 lauter            6  Zone 2 leiser
+            7  Zone 3 lauter            8  Zone 3 leiser
+            V  Lautstärke direkt setzen
+            M  Mute ein-/ausschalten
+            E  Eingang auswählen
+            0  Zurück zum Hauptmenü
+            """);
+        Console.Write("Zonen-Auswahl: ");
+        var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
+
+        switch (choice)
+        {
+            case "0":
+            case "":
+            case null:
+                return;
+            case "1":
+                await telnet.SetZone2PowerAsync(true, cancellationToken);
+                break;
+            case "2":
+                await telnet.SetZone2PowerAsync(false, cancellationToken);
+                break;
+            case "3":
+                await telnet.SetZone3PowerAsync(true, cancellationToken);
+                break;
+            case "4":
+                await telnet.SetZone3PowerAsync(false, cancellationToken);
+                break;
+            case "5":
+                await telnet.ChangeZone2VolumeAsync(true, cancellationToken);
+                break;
+            case "6":
+                await telnet.ChangeZone2VolumeAsync(false, cancellationToken);
+                break;
+            case "7":
+                await telnet.ChangeZone3VolumeAsync(true, cancellationToken);
+                break;
+            case "8":
+                await telnet.ChangeZone3VolumeAsync(false, cancellationToken);
+                break;
+            case "V":
+                await SetAdditionalZoneVolumeAsync(telnet, cancellationToken);
+                break;
+            case "M":
+                await SetAdditionalZoneMuteAsync(telnet, cancellationToken);
+                break;
+            case "E":
+                await SetAdditionalZoneInputAsync(telnet, receiver, cancellationToken);
+                break;
+            default:
+                Console.WriteLine("Ungültige Auswahl.");
+                continue;
+        }
+
+        await Task.Delay(350, cancellationToken);
+    }
 }
 
 static async Task ShowAdditionalZonesAsync(
@@ -179,6 +214,122 @@ static async Task ShowAdditionalZonesAsync(
     Console.WriteLine("\nAktueller Zonenstatus:");
     ShowAdditionalZone("Zone 2", state.Zone2);
     ShowAdditionalZone("Zone 3", state.Zone3);
+}
+
+static async Task SetAdditionalZoneVolumeAsync(
+    DenonTelnetClient telnet,
+    CancellationToken cancellationToken)
+{
+    if (!TryReadZone(out var zone))
+    {
+        return;
+    }
+
+    Console.Write("Lautstärke in dB (-80,0 bis +18,0): ");
+    if (!TryParseGermanOrInvariantDouble(Console.ReadLine(), out var volume))
+    {
+        Console.WriteLine("Ungültige Zahl.");
+        return;
+    }
+
+    try
+    {
+        if (zone == 2)
+        {
+            await telnet.SetZone2VolumeAsync(volume, cancellationToken);
+        }
+        else
+        {
+            await telnet.SetZone3VolumeAsync(volume, cancellationToken);
+        }
+    }
+    catch (ArgumentOutOfRangeException exception)
+    {
+        Console.WriteLine(exception.Message);
+    }
+}
+
+static async Task SetAdditionalZoneMuteAsync(
+    DenonTelnetClient telnet,
+    CancellationToken cancellationToken)
+{
+    if (!TryReadZone(out var zone))
+    {
+        return;
+    }
+
+    Console.Write("Mute [E]in/[A]us: ");
+    var selection = Console.ReadLine()?.Trim().ToUpperInvariant();
+    if (selection is not ("E" or "A"))
+    {
+        Console.WriteLine("Bitte E oder A eingeben.");
+        return;
+    }
+
+    var muted = selection.Equals("E", StringComparison.OrdinalIgnoreCase);
+
+    if (zone == 2)
+    {
+        await telnet.SetZone2MuteAsync(muted, cancellationToken);
+    }
+    else
+    {
+        await telnet.SetZone3MuteAsync(muted, cancellationToken);
+    }
+}
+
+static async Task SetAdditionalZoneInputAsync(
+    DenonTelnetClient telnet,
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    if (!TryReadZone(out var zone))
+    {
+        return;
+    }
+
+    var inputs = await receiver.RefreshInputsAsync(cancellationToken);
+    Console.WriteLine("Verfügbare Eingänge:");
+    for (var index = 0; index < inputs.Count; index++)
+    {
+        Console.WriteLine($"  {index + 1,2}: {inputs[index]}");
+    }
+
+    Console.Write("Nummer oder Denon-Protokollname: ");
+    var selection = Console.ReadLine()?.Trim();
+    if (string.IsNullOrWhiteSpace(selection))
+    {
+        return;
+    }
+
+    var input = int.TryParse(selection, out var number) &&
+                number >= 1 && number <= inputs.Count
+        ? inputs[number - 1]
+        : selection;
+
+    if (zone == 2)
+    {
+        await telnet.SetZone2InputAsync(input, cancellationToken);
+    }
+    else
+    {
+        await telnet.SetZone3InputAsync(input, cancellationToken);
+    }
+}
+
+static bool TryReadZone(out int zone)
+{
+    Console.Write("Zone [2/3]: ");
+    var text = Console.ReadLine()?.Trim();
+    zone = text is "2" or "3" ? int.Parse(text) : 0;
+
+    if (zone != 0)
+    {
+        return true;
+    }
+
+    Console.WriteLine("Bitte nur 2 oder 3 eingeben.");
+    return false;
 }
 
 static async Task ExecuteAndRefreshAsync(

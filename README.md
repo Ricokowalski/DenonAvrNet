@@ -1,7 +1,7 @@
 # DenonAvrNet
 
 `DenonAvrNet` ist eine asynchrone C#/.NET-Bibliothek zur Steuerung kompatibler
-Denon- und Marantz-AV-Receiver über deren lokale HTTP/XML-Schnittstelle.
+Denon- und Marantz-AV-Receiver über deren lokale HTTP/XML- und Telnet-Schnittstelle.
 
 Die Bibliothek wurde insbesondere mit einem **Denon AVC-X6800H** und dessen
 Kommunikations-API `0301` auf HTTP-Port `8080` entwickelt. Ältere Geräte mit
@@ -17,7 +17,7 @@ der Statusschnittstelle auf Port `80` werden ebenfalls berücksichtigt.
   - Master-Lautstärke
   - Mute
   - verfügbare Eingänge
-- lesender Status für Zone 2 und Zone 3 (Power, Eingang, Lautstärke, Mute)
+- Status für Zone 2 und Zone 3 (Power, Eingang, Lautstärke, Mute)
 - zwischengespeicherte Eingangsliste mit gezielter Aktualisierung
 - automatische Kompatibilitätsumschaltung bei unvollständigen gebündelten
   AppCommand-Antworten
@@ -32,6 +32,11 @@ der Statusschnittstelle auf Port `80` werden ebenfalls berücksichtigt.
 - Lautstärke erhöhen, verringern oder absolut in dB setzen
 - Mute ein- und ausschalten
 - Eingang anhand des sichtbaren Denon-Namens auswählen
+- Zone 2 und Zone 3 über Telnet-Port 23 steuern:
+  - ein-/ausschalten
+  - Lautstärke erhöhen, verringern oder absolut in dB setzen
+  - Mute ein-/ausschalten
+  - Eingang auswählen
 - beliebige rohe Denon-HTTP-Befehlspfade senden
 - Unterstützung von `CancellationToken`
 
@@ -243,10 +248,8 @@ Weitere Details stehen in der [API-Dokumentation](docs/API.md), den
 ## Aktuelle Grenzen
 
 - Der Schwerpunkt liegt derzeit auf der Main Zone.
-- Zone 2 und Zone 3 werden gelesen, aber noch nicht gesteuert.
 - Umbenannte Eingänge werden noch nicht separat auf ihre benutzerdefinierten
   Anzeigenamen abgebildet.
-- Telnet-Port 23 wird noch nicht als Transport verwendet.
 - Es gibt derzeit keine automatische Ereignisüberwachung oder Push-Updates.
 
 ## Referenz und Lizenz
