@@ -274,7 +274,7 @@ foreach (var level in presetLevels)
 await receiver.SetSpeakerPresetLevelAsync(speakerIndex: 2, decibels: -3.5);
 ```
 
-`GetSpeakerPresetLevelsAsync()` liest `/ajax/speakers/get_config?type=20`.
+`GetSpeakerPresetLevelsAsync()` liest `/ajax/speakers/get_config?type=5`.
 `SetSpeakerPresetLevelAsync()` sendet den Wert als Zehntel-dB (`-35` für
 `-3,5 dB`) an `/ajax/speakers/set_config?type=20`. `SpeakerIndex` ist der
 vom Receiver gelieferten Weboberflächen-Index und keine

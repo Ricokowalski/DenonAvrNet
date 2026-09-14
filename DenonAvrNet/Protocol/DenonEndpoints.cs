@@ -3,7 +3,7 @@
 internal static class DenonEndpoints
 {
     internal static string SpeakerPresetLevels() =>
-        $"/ajax/speakers/get_config?type=20&_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+        $"/ajax/speakers/get_config?type=5&_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
     internal const string DeviceInfo = "/goform/Deviceinfo.xml";
     internal const string AppCommand = "/goform/AppCommand.xml";
     internal const string AppCommand0300 = "/goform/AppCommand0300.xml";

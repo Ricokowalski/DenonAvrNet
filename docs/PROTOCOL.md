@@ -265,7 +265,7 @@ mit folgenden GET-Aufrufen gelesen bzw. gesetzt:
 
 | Zweck | Pfad |
 | --- | --- |
-| Pegel des aktiven Speaker-Presets lesen | `/ajax/speakers/get_config?type=20&_=…` |
+| Pegel des aktiven Speaker-Presets lesen | `/ajax/speakers/get_config?type=5&_=…` |
 | Speaker-Index 2 auf -3,5 dB setzen | `/ajax/speakers/set_config?type=20&data=%3CSpeaker%20index%3D%222%22%3E-35%3C%2FSpeaker%3E&_=…` |
 
 Der Wert innerhalb von `Speaker` ist ein Zehntel-dB-Wert (`-35` = `-3,5 dB`).
