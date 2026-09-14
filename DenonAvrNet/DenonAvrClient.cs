@@ -75,13 +75,30 @@ public sealed class DenonAvrClient : IDisposable
     public async Task<DenonReceiverState> UpdateAsync(CancellationToken cancellationToken = default)
     {
         var port = GetInitializedPort();
-        var xml = await _httpTransport.GetStringAsync(
-            Host,
-            port,
-            DenonEndpoints.MainZoneStatus,
-            cancellationToken).ConfigureAwait(false);
 
-        State = DenonXmlParser.ParseMainZoneStatus(xml);
+        if (port == 8080)
+        {
+            var request = DenonAppCommand.CreateMainZoneStatusRequest();
+            var xml = await _httpTransport.PostXmlAsync(
+                Host,
+                port,
+                DenonEndpoints.AppCommand,
+                request,
+                cancellationToken).ConfigureAwait(false);
+
+            State = DenonXmlParser.ParseAppCommandMainZoneStatus(xml);
+        }
+        else
+        {
+            var xml = await _httpTransport.GetStringAsync(
+                Host,
+                port,
+                DenonEndpoints.MainZoneStatus,
+                cancellationToken).ConfigureAwait(false);
+
+            State = DenonXmlParser.ParseMainZoneStatus(xml);
+        }
+
         return State;
     }
 

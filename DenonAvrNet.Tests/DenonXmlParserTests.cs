@@ -34,6 +34,21 @@ public sealed class DenonXmlParserTests
     }
 
     [Fact]
+    public void ParseAppCommandMainZoneStatus_ReadsExpectedValues()
+    {
+        var result = DenonXmlParser.ParseAppCommandMainZoneStatus(TestXml.AppCommandMainZoneStatus);
+
+        Assert.True(result.IsPoweredOn);
+        Assert.Equal("ON", result.Power);
+        Assert.Equal("MPLAY", result.Input);
+        Assert.Equal(-35.5, result.VolumeDb);
+        Assert.False(result.IsMuted);
+        Assert.Equal(
+            new[] { "CBL/SAT", "Media Player", "PHONO" },
+            result.AvailableInputs);
+    }
+
+    [Fact]
     public void ParseDeviceInfo_RejectsExternalDocumentType()
     {
         const string unsafeXml = """

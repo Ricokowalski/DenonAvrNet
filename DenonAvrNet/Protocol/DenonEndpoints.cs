@@ -3,6 +3,7 @@
 internal static class DenonEndpoints
 {
     internal const string DeviceInfo = "/goform/Deviceinfo.xml";
+    internal const string AppCommand = "/goform/AppCommand.xml";
     internal const string MainZoneStatus = "/goform/formMainZone_MainZoneXmlStatus.xml";
     internal const string PowerOn = "/goform/formiPhoneAppPower.xml?1+PowerOn";
     internal const string PowerStandby = "/goform/formiPhoneAppPower.xml?1+PowerStandby";

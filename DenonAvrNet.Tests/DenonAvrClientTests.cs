@@ -37,6 +37,32 @@ public sealed class DenonAvrClientTests
         Assert.Equal(-35.5, state.VolumeDb);
     }
 
+    [Fact]
+    public async Task UpdateAsync_UsesAppCommandPostOnPort8080()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+            request.RequestUri!.Port == 80
+                ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                : request.RequestUri.AbsolutePath switch
+                {
+                    "/goform/Deviceinfo.xml" => StubHttpMessageHandler.Xml(TestXml.DeviceInfo),
+                    "/goform/AppCommand.xml" =>
+                        StubHttpMessageHandler.Xml(TestXml.AppCommandMainZoneStatus),
+                    _ => new HttpResponseMessage(HttpStatusCode.Forbidden)
+                });
+        using var transport = new DenonHttpTransport(handler, TimeSpan.FromSeconds(1));
+        using var client = new DenonAvrClient("10.37.0.190", transport);
+        await client.InitializeAsync();
+
+        var state = await client.UpdateAsync();
+
+        Assert.Equal(HttpMethod.Post, handler.RequestMethods[^1]);
+        Assert.Equal("/goform/AppCommand.xml", handler.RequestedUris[^1].AbsolutePath);
+        Assert.Equal("text/xml", handler.RequestContentTypes[^1]);
+        Assert.Contains("GetAllZonePowerStatus", handler.RequestBodies[^1]);
+        Assert.Equal(-35.5, state.VolumeDb);
+    }
+
     [Theory]
     [InlineData(-80.1)]
     [InlineData(18.1)]

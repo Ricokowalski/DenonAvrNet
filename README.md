@@ -9,6 +9,8 @@ not contain a test, console or WPF project.
 ## Current functionality
 
 - Detect the Denon HTTP/XML API on port 80 or 8080
+- Read modern receivers through `POST /goform/AppCommand.xml` on port 8080,
+  with the legacy status XML retained for receivers on port 80
 - Read model, communication API version, MAC address and zone count
 - Read Main Zone power, input, volume, mute and available inputs
 - Main Zone power on and standby

@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
 
 namespace DenonAvrNet.Transport;
 
@@ -39,6 +40,26 @@ internal sealed class DenonHttpTransport : IDisposable
         using var response = await _httpClient.GetAsync(
             requestUri,
             HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<string> PostXmlAsync(
+        string host,
+        int port,
+        string path,
+        string xml,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(xml);
+
+        var requestUri = BuildUri(host, port, path);
+        using var content = new StringContent(xml, Encoding.UTF8, "text/xml");
+        using var response = await _httpClient.PostAsync(
+            requestUri,
+            content,
             cancellationToken).ConfigureAwait(false);
 
         response.EnsureSuccessStatusCode();

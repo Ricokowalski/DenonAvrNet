@@ -8,13 +8,24 @@ internal sealed class StubHttpMessageHandler(
 {
     internal List<Uri> RequestedUris { get; } = [];
 
-    protected override Task<HttpResponseMessage> SendAsync(
+    internal List<HttpMethod> RequestMethods { get; } = [];
+
+    internal List<string?> RequestBodies { get; } = [];
+
+    internal List<string?> RequestContentTypes { get; } = [];
+
+    protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         RequestedUris.Add(request.RequestUri ?? throw new InvalidOperationException("Request URI fehlt."));
-        return Task.FromResult(responseFactory(request, cancellationToken));
+        RequestMethods.Add(request.Method);
+        RequestBodies.Add(request.Content is null
+            ? null
+            : await request.Content.ReadAsStringAsync(cancellationToken));
+        RequestContentTypes.Add(request.Content?.Headers.ContentType?.MediaType);
+        return responseFactory(request, cancellationToken);
     }
 
     internal static HttpResponseMessage Xml(string xml) => new(HttpStatusCode.OK)

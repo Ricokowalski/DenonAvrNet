@@ -59,6 +59,38 @@ internal static class DenonXmlParser
             inputs);
     }
 
+    internal static DenonReceiverState ParseAppCommandMainZoneStatus(string xml)
+    {
+        var root = ParseSecurely(xml).Root;
+
+        if (root is null || !NameEquals(root, "rx"))
+        {
+            throw new DenonProtocolException("Die Antwort ist keine gültige Denon-AppCommand-Antwort.");
+        }
+
+        var responses = root.Elements().ToArray();
+        if (responses.Length < 4 || responses.Take(4).Any(element => !NameEquals(element, "cmd")))
+        {
+            throw new DenonProtocolException("Die AppCommand-Antwort enthält nicht alle Main-Zone-Statuswerte.");
+        }
+
+        var power = Value(responses[0], "zone1") ?? "UNKNOWN";
+        var volume = NestedValue(responses[1], "zone1", "volume");
+        var mute = Value(responses[2], "zone1");
+        var input = NestedValue(responses[3], "zone1", "source");
+        var inputs = responses.Length >= 5
+            ? ParseAvailableInputs(responses[4])
+            : [];
+
+        return new DenonReceiverState(
+            power.Equals("ON", StringComparison.OrdinalIgnoreCase),
+            power,
+            input,
+            ParseNullableDouble(volume),
+            ParseNullableBoolean(mute),
+            inputs);
+    }
+
     private static XDocument ParseSecurely(string xml)
     {
         try
@@ -100,6 +132,39 @@ internal static class DenonXmlParser
             .Trim();
 
         return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static string? NestedValue(XElement parent, string containerName, string elementName)
+    {
+        var value = parent.Elements()
+            .FirstOrDefault(element => NameEquals(element, containerName))?
+            .Elements()
+            .FirstOrDefault(element => NameEquals(element, elementName))?
+            .Value
+            .Trim();
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static IReadOnlyList<string> ParseAvailableInputs(XElement command)
+    {
+        if (!NameEquals(command, "cmd"))
+        {
+            return [];
+        }
+
+        return command.Elements()
+            .FirstOrDefault(element => NameEquals(element, "functiondelete"))?
+            .Elements()
+            .Where(element => NameEquals(element, "list"))
+            .Where(element => !string.Equals(
+                Value(element, "use"),
+                "0",
+                StringComparison.OrdinalIgnoreCase))
+            .Select(element => Value(element, "FuncName") ?? Value(element, "name"))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .ToArray() ?? [];
     }
 
     private static bool NameEquals(XElement element, string localName) =>

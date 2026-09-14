@@ -7,18 +7,22 @@ internal static class DenonAppCommand
 {
     internal static string CreateMainZoneStatusRequest()
     {
-        var commands = new[]
-        {
+        string[] commands =
+        [
             "GetAllZonePowerStatus",
             "GetAllZoneVolume",
             "GetAllZoneMuteStatus",
             "GetAllZoneSource",
             "GetDeletedSource"
-        };
+        ];
 
-        return CreateTransaction(commands).ToString(SaveOptions.DisableFormatting);
+        var document = new XDocument(
+            new XDeclaration("1.0", "utf-8", null),
+            new XElement(
+                "tx",
+                commands.Select(command =>
+                    new XElement("cmd", new XAttribute("id", "1"), command))));
+
+        return document.ToString(SaveOptions.DisableFormatting);
     }
-
-    private static XElement CreateTransaction(IEnumerable<string> commands) =>
-        new("tx", commands.Select(command => new XElement("cmd", new XAttribute("id", "1"), command)));
 }
