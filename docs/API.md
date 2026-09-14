@@ -133,6 +133,35 @@ await zones.SetZone3InputAsync("CBL/SAT");      // sendet Z3SAT/CBL
 `SetZone2VolumeAsync()` und `SetZone3VolumeAsync()` akzeptieren Werte von
 `-80,0` bis `+18,0 dB` und runden auf halbe dB-Schritte.
 
+### `DenonReceiverMonitor` – Ereignisse und Rückfall-Polling
+
+`DenonReceiverMonitor` öffnet eine dauerhafte Telnet-Verbindung auf Port 23.
+Jede vom Receiver gesendete Statusmeldung löst über `TelnetEventReceived` sofort
+eine Aktualisierung aus. Parallel wird der vollständige HTTP-Status standardmäßig
+alle 15 Sekunden neu gelesen. Nach einem Verbindungsabbruch verbindet sich der
+Telnet-Listener automatisch erneut.
+
+Der Monitor besitzt bewusst einen eigenen HTTP-Client. Dadurch kann er parallel
+zur interaktiven Konsolensteuerung laufen, ohne gleichzeitige `UpdateAsync()`-
+Aufrufe auf demselben `DenonAvrClient` zu verursachen.
+
+```csharp
+await using var monitor = new DenonReceiverMonitor(
+    "10.37.0.190",
+    TimeSpan.FromSeconds(15));
+
+monitor.TelnetEventReceived += eventMessage =>
+    Console.WriteLine($"Telnet: {eventMessage.Message}");
+monitor.StateRefreshed += state =>
+    Console.WriteLine($"Status: {state.Power}, {state.Input}");
+monitor.Error += exception =>
+    Console.Error.WriteLine(exception.Message);
+
+await monitor.StartAsync();
+```
+
+`CurrentState` enthält stets den letzten erfolgreichen Status-Snapshot.
+
 ### `RefreshInputsAsync`
 
 ```csharp

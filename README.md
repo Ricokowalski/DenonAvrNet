@@ -32,11 +32,19 @@ der Statusschnittstelle auf Port `80` werden ebenfalls berücksichtigt.
 - Lautstärke erhöhen, verringern oder absolut in dB setzen
 - Mute ein- und ausschalten
 - Eingang anhand des sichtbaren Denon-Namens auswählen
+- Speaker Preset 1 oder 2 umschalten
+- Surround-Modus wählen: Auto, Stereo, Dolby Surround, DTS Neural:X,
+  Multi Ch Stereo oder Pure Direct
+- digitalen Eingangsdecoder auf Auto, PCM oder DTS setzen
 - Zone 2 und Zone 3 über Telnet-Port 23 steuern:
   - ein-/ausschalten
   - Lautstärke erhöhen, verringern oder absolut in dB setzen
   - Mute ein-/ausschalten
   - Eingang auswählen
+- dauerhafte Statusüberwachung für Headless-Betrieb:
+  - Telnet-Ereignisse werden sofort empfangen
+  - automatisches Wiederverbinden nach einer Telnet-Unterbrechung
+  - HTTP-Statusabfrage alle 15 Sekunden als Rückfallebene
 - beliebige rohe Denon-HTTP-Befehlspfade senden
 - Unterstützung von `CancellationToken`
 
@@ -250,7 +258,8 @@ Weitere Details stehen in der [API-Dokumentation](docs/API.md), den
 - Der Schwerpunkt liegt derzeit auf der Main Zone.
 - Umbenannte Eingänge werden noch nicht separat auf ihre benutzerdefinierten
   Anzeigenamen abgebildet.
-- Es gibt derzeit keine automatische Ereignisüberwachung oder Push-Updates.
+- Ereignisse werden über eine dauerhaft geöffnete Telnet-Verbindung empfangen;
+  eigene Ereignis-Handler sollten keine lang laufenden Arbeiten ausführen.
 
 ## Referenz und Lizenz
 

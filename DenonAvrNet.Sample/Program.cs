@@ -30,6 +30,9 @@ try
     Console.WriteLine($"  Zonen:       {device.ZoneCount?.ToString() ?? "unbekannt"}");
     Console.WriteLine($"  HTTP-Port:   {receiver.HttpPort}");
 
+    await using var monitor = new DenonReceiverMonitor(host);
+    await monitor.StartAsync(cancellationSource.Token);
+
     await ShowStatusAsync(receiver, cancellationSource.Token);
 
     while (!cancellationSource.IsCancellationRequested)
@@ -82,6 +85,9 @@ try
             case "T":
                 await ControlAdditionalZonesAsync(host, receiver, cancellationSource.Token);
                 break;
+            case "A":
+                await ControlAudioAndSpeakerPresetsAsync(host, receiver, cancellationSource.Token);
+                break;
             case "0":
             case "Q":
                 return;
@@ -124,6 +130,7 @@ static void PrintMenu()
         9  Eingang auswählen
         D  Nur-Lese-Diagnose (5 Statusabfragen)
         T  Zone 2/3 anzeigen und schalten (Telnet)
+        A  Speaker-Presets und Audio-Modi (Telnet)
         0  Beenden
         """);
     Console.Write("Auswahl: ");
@@ -202,6 +209,144 @@ static async Task ControlAdditionalZonesAsync(
         }
 
         await Task.Delay(350, cancellationToken);
+    }
+}
+
+static async Task ControlAudioAndSpeakerPresetsAsync(
+    string host,
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    var telnet = new DenonTelnetClient(host);
+
+    while (!cancellationToken.IsCancellationRequested)
+    {
+        Console.WriteLine("""
+
+            ── Speaker-Presets und Audio ──
+            1  Speaker Preset 1
+            2  Speaker Preset 2
+            3  Surround-/Soundmodus wählen
+            4  Digitalen Eingangsdecoder wählen (Auto / PCM / DTS)
+            0  Zurück zum Hauptmenü
+            """);
+        Console.Write("Audio-Auswahl: ");
+        var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
+
+        switch (choice)
+        {
+            case "0":
+            case "":
+            case null:
+                return;
+            case "1":
+                await ExecuteAudioCommandAsync(
+                    () => telnet.SelectSpeakerPresetAsync(1, cancellationToken),
+                    receiver,
+                    cancellationToken,
+                    800);
+                break;
+            case "2":
+                await ExecuteAudioCommandAsync(
+                    () => telnet.SelectSpeakerPresetAsync(2, cancellationToken),
+                    receiver,
+                    cancellationToken,
+                    800);
+                break;
+            case "3":
+                await SetSurroundModeAsync(telnet, receiver, cancellationToken);
+                break;
+            case "4":
+                await SetDigitalInputModeAsync(telnet, receiver, cancellationToken);
+                break;
+            default:
+                Console.WriteLine("Ungültige Auswahl.");
+                break;
+        }
+    }
+}
+
+static async Task SetSurroundModeAsync(
+    DenonTelnetClient telnet,
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    Console.WriteLine("""
+        1  Auto
+        2  Stereo
+        3  Dolby Surround
+        4  DTS Neural:X
+        5  Multi Ch Stereo
+        6  Pure Direct
+        """);
+    Console.Write("Soundmodus: ");
+    var mode = Console.ReadLine()?.Trim() switch
+    {
+        "1" => "Auto",
+        "2" => "Stereo",
+        "3" => "Dolby Surround",
+        "4" => "DTS Neural:X",
+        "5" => "Multi Ch Stereo",
+        "6" => "Pure Direct",
+        _ => null
+    };
+
+    if (mode is null)
+    {
+        Console.WriteLine("Ungültige Auswahl.");
+        return;
+    }
+
+    await ExecuteAudioCommandAsync(
+        () => telnet.SetSurroundModeAsync(mode, cancellationToken),
+        receiver,
+        cancellationToken,
+        500);
+}
+
+static async Task SetDigitalInputModeAsync(
+    DenonTelnetClient telnet,
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    Console.Write("Digitaler Eingangsdecoder [A]uto / [P]CM / [D]TS: ");
+    var mode = Console.ReadLine()?.Trim().ToUpperInvariant() switch
+    {
+        "A" => "Auto",
+        "P" => "PCM",
+        "D" => "DTS",
+        _ => null
+    };
+
+    if (mode is null)
+    {
+        Console.WriteLine("Bitte A, P oder D eingeben.");
+        return;
+    }
+
+    await ExecuteAudioCommandAsync(
+        () => telnet.SetDigitalInputModeAsync(mode, cancellationToken),
+        receiver,
+        cancellationToken,
+        350);
+}
+
+static async Task ExecuteAudioCommandAsync(
+    Func<Task<string>> command,
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken,
+    int settleDelayMilliseconds)
+{
+    try
+    {
+        var response = await command();
+        Console.WriteLine($"Receiver-Antwort: {response}");
+        await Task.Delay(settleDelayMilliseconds, cancellationToken);
+        await ShowStatusAsync(receiver, cancellationToken);
+    }
+    catch (ArgumentException exception)
+    {
+        Console.WriteLine(exception.Message);
     }
 }
 
@@ -353,6 +498,7 @@ static async Task ShowStatusAsync(
     Console.WriteLine($"  Eingang:     {state.Input ?? "unbekannt"}");
     Console.WriteLine($"  Lautstärke:  {FormatVolume(state.VolumeDb)}");
     Console.WriteLine($"  Mute:        {FormatMute(state.IsMuted)}");
+    Console.WriteLine($"  Audio-Eingang:{state.Audio?.InputMode ?? "unbekannt"}");
     Console.WriteLine($"  Audioformat: {state.Audio?.AudioFormat ?? "unbekannt"}");
     Console.WriteLine($"  Soundmodus:  {state.Audio?.SoundMode ?? "unbekannt"}");
     Console.WriteLine($"  Samplerate:  {state.Audio?.SampleRate ?? "unbekannt"}");

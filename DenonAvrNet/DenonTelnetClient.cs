@@ -124,6 +124,64 @@ public sealed class DenonTelnetClient
     public Task<string> SetZone3InputAsync(string input, CancellationToken cancellationToken = default) =>
         SetZoneInputAsync("Z3", input, cancellationToken);
 
+    /// <summary>Switches the receiver's configured Speaker Preset 1 or 2.</summary>
+    public Task<string> SelectSpeakerPresetAsync(int preset, CancellationToken cancellationToken = default)
+    {
+        if (preset is not (1 or 2))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(preset),
+                preset,
+                "Der Receiver unterstützt Speaker Preset 1 oder 2.");
+        }
+
+        return SendCommandAsync($"SPPR {preset}", cancellationToken);
+    }
+
+    /// <summary>
+    /// Sets a surround mode, for example <c>Dolby Surround</c>, <c>DTS Neural:X</c>,
+    /// <c>Stereo</c>, <c>Multi Ch Stereo</c>, <c>Pure Direct</c> or <c>Auto</c>.
+    /// </summary>
+    public Task<string> SetSurroundModeAsync(string mode, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(mode);
+        if (mode.Contains('\r') || mode.Contains('\n'))
+        {
+            throw new ArgumentException("Der Soundmodus darf keinen Zeilenumbruch enthalten.", nameof(mode));
+        }
+
+        var protocolMode = mode.Trim().ToUpperInvariant() switch
+        {
+            "AUTO" => "AUTO",
+            "STEREO" => "STEREO",
+            "PURE DIRECT" => "PURE DIRECT",
+            "DOLBY SURROUND" => "DOLBY SURROUND",
+            "DTS NEURAL:X" => "DTS NEURAL:X",
+            "MULTI CH STEREO" or "MCH STEREO" => "MCH STEREO",
+            _ => mode.Trim()
+        };
+
+        return SendCommandAsync($"MS{protocolMode}", cancellationToken);
+    }
+
+    /// <summary>Sets the digital input decoder to <c>Auto</c>, <c>PCM</c> or <c>DTS</c>.</summary>
+    public Task<string> SetDigitalInputModeAsync(string mode, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(mode);
+
+        var protocolMode = mode.Trim().ToUpperInvariant() switch
+        {
+            "AUTO" => "AUTO",
+            "PCM" => "PCM",
+            "DTS" => "DTS",
+            _ => throw new ArgumentException(
+                "Als digitaler Eingangsmodus sind nur Auto, PCM oder DTS zulässig.",
+                nameof(mode))
+        };
+
+        return SendCommandAsync($"DC{protocolMode}", cancellationToken);
+    }
+
     private Task<string> SetZoneInputAsync(
         string zonePrefix,
         string input,
