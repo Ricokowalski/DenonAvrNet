@@ -289,6 +289,8 @@ Further details are available in the [API documentation](docs/API.md), [protocol
 - The current focus is the Main Zone.
 - Renamed inputs are not yet mapped separately to their custom display names.
 - Events are received through a permanently open Telnet connection; custom event handlers should not perform long-running work.
+- Receiver-specific web features use an internal profile selected during `InitializeAsync()`. The selected profile is exposed as `ReceiverProfileId` for diagnostics.
+- Speaker-preset levels are currently implemented for the AVC-X6800H AJAX API only. The AVC-X6700H and legacy profiles intentionally report this feature as unsupported until their exact web requests and responses have been captured and implemented in dedicated providers.
 
 ## Reference and license
 

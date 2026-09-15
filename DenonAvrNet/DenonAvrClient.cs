@@ -1,9 +1,9 @@
 ﻿using System.Globalization;
 using System.Net.Sockets;
-using System.Xml.Linq;
 using DenonAvrNet.Exceptions;
 using DenonAvrNet.Models;
 using DenonAvrNet.Protocol;
+using DenonAvrNet.Profiles;
 using DenonAvrNet.Transport;
 
 namespace DenonAvrNet;
@@ -11,7 +11,6 @@ namespace DenonAvrNet;
 /// <summary>Controls a Denon or compatible Marantz receiver through its HTTP/XML API.</summary>
 public sealed class DenonAvrClient : IDisposable
 {
-    private const int SpeakerSetupHttpPort = 11080;
     private readonly DenonHttpTransport _httpTransport;
     private readonly DenonTelnetClient _telnetClient;
     private readonly bool _ownsTransport;
@@ -26,6 +25,7 @@ public sealed class DenonAvrClient : IDisposable
     private static readonly IReadOnlySet<DenonControlProtocol> TelnetOnly =
         new HashSet<DenonControlProtocol> { DenonControlProtocol.Telnet };
     private IReadOnlyList<string>? _availableInputs;
+    private IDenonReceiverProfile? _receiverProfile;
     private bool _requiresSequentialAppCommandRequests;
     private bool _disposed;
 
@@ -72,6 +72,12 @@ public sealed class DenonAvrClient : IDisposable
     /// </summary>
     public DenonReceiverCapabilities? ReceiverCapabilities { get; private set; }
 
+    /// <summary>
+    /// Gets the HTTP/API profile selected for the connected receiver, or <see langword="null"/>
+    /// until <see cref="InitializeAsync"/> has succeeded.
+    /// </summary>
+    public string? ReceiverProfileId => _receiverProfile?.Id;
+
     /// <summary>Gets the most recently confirmed receiver state.</summary>
     public DenonReceiverState? State { get; private set; }
 
@@ -97,6 +103,7 @@ public sealed class DenonAvrClient : IDisposable
                 var deviceInfo = DenonXmlParser.ParseDeviceInfo(xml);
                 HttpPort = port;
                 DeviceInfo = deviceInfo;
+                _receiverProfile = DenonReceiverProfileRegistry.Select(deviceInfo, port);
                 ReceiverCapabilities = CreateReceiverCapabilities(deviceInfo, port);
                 State = null;
                 _availableInputs = null;
@@ -592,7 +599,7 @@ public sealed class DenonAvrClient : IDisposable
     }
 
     /// <summary>
-    /// Sets a speaker-preset level through the receiver's current web interface.
+    /// Sets a speaker-preset level through the receiver-specific speaker configuration API.
     /// The index is the <c>Speaker index</c> used by that interface; values use 0.1 dB units.
     /// </summary>
     public Task SetSpeakerPresetLevelAsync(
@@ -610,37 +617,19 @@ public sealed class DenonAvrClient : IDisposable
             throw new ArgumentOutOfRangeException(nameof(decibels), "Der Pegel muss zwischen -12,0 und +12,0 dB liegen.");
         }
 
-        var tenthsOfDecibels = (int)Math.Round(decibels * 10, MidpointRounding.AwayFromZero);
-        return SendSpeakerSetupHttpCommandAsync(
-            DenonEndpoints.SetSpeakerPresetLevel(speakerIndex, tenthsOfDecibels),
+        return GetReceiverProfile().SpeakerPresetLevels.SetLevelAsync(
+            new DenonProfileContext(Host, _httpTransport),
+            speakerIndex,
+            decibels,
             cancellationToken);
     }
 
-    /// <summary>Reads the actual levels of the active speaker preset from the receiver web interface.</summary>
-    public async Task<IReadOnlyList<DenonSpeakerPresetLevel>> GetSpeakerPresetLevelsAsync(
-        CancellationToken cancellationToken = default)
-    {
-        var response = await _httpTransport.GetStringAsync(
-            Host,
-            SpeakerSetupHttpPort,
-            DenonEndpoints.SpeakerPresetLevels(),
-            cancellationToken).ConfigureAwait(false);
-
-        var document = XDocument.Parse(response);
-        return document.Descendants("Speaker")
-            .Select(element => new
-            {
-                Index = (int?)element.Attribute("index"),
-                Value = element.Value
-            })
-            .Where(item => item.Index is not null &&
-                           int.TryParse(item.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
-            .Select(item => new DenonSpeakerPresetLevel(
-                item.Index!.Value,
-                int.Parse(item.Value, CultureInfo.InvariantCulture) / 10.0))
-            .OrderBy(level => level.SpeakerIndex)
-            .ToArray();
-    }
+    /// <summary>Reads the active speaker-preset levels using the selected receiver profile.</summary>
+    public Task<IReadOnlyList<DenonSpeakerPresetLevel>> GetSpeakerPresetLevelsAsync(
+        CancellationToken cancellationToken = default) =>
+        GetReceiverProfile().SpeakerPresetLevels.GetLevelsAsync(
+            new DenonProfileContext(Host, _httpTransport),
+            cancellationToken);
 
     /// <summary>Sends a complete Denon HTTP command path.</summary>
     /// <param name="commandPath">Path beginning with <c>/</c>, including any query command.</param>
@@ -682,12 +671,6 @@ public sealed class DenonAvrClient : IDisposable
     {
         var port = GetInitializedPort();
         _ = await _httpTransport.GetStringAsync(Host, port, commandPath, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    private async Task SendSpeakerSetupHttpCommandAsync(string commandPath, CancellationToken cancellationToken)
-    {
-        _ = await _httpTransport.GetStringAsync(Host, SpeakerSetupHttpPort, commandPath, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -786,6 +769,13 @@ public sealed class DenonAvrClient : IDisposable
             SupportsZone2: zoneCount is >= 2,
             SupportsZone3: zoneCount is >= 3,
             ZoneCount: zoneCount);
+    }
+
+    private IDenonReceiverProfile GetReceiverProfile()
+    {
+        ThrowIfDisposed();
+        return _receiverProfile ?? throw new InvalidOperationException(
+            "InitializeAsync muss vor dem Abruf receiver-spezifischer Funktionen aufgerufen werden.");
     }
 
     private static string NormalizeHost(string host)

@@ -48,10 +48,11 @@ The default `requestTimeout` is five seconds. The internal connection setup and 
 | `PreferredControlProtocol` | `DenonControlProtocol` | Default transport for Main Zone control commands; default `Auto` |
 | `HttpPort` | `int?` | Port detected after initialization |
 | `DeviceInfo` | `DenonDeviceInfo?` | Most recently detected device information |
+| `ReceiverProfileId` | `string?` | Selected receiver-specific HTTP profile; useful for diagnostics |
 | `ReceiverCapabilities` | `DenonReceiverCapabilities?` | Hardware capabilities detected for this AVR model |
 | `State` | `DenonReceiverState?` | Most recently confirmed status snapshot |
 
-`HttpPort`, `DeviceInfo`, `ReceiverCapabilities`, and `State` are `null` before their respective successful query.
+`HttpPort`, `DeviceInfo`, `ReceiverProfileId`, `ReceiverCapabilities`, and `State` are `null` before their respective successful query.
 
 ### `InitializeAsync`
 
@@ -62,7 +63,25 @@ Task<DenonDeviceInfo> InitializeAsync(
 
 The method queries `Deviceinfo.xml` on port 80 first and then port 8080. Initialization completes only when the Denon response is syntactically and semantically valid.
 
-On success, `HttpPort`, `DeviceInfo`, and initially known `ReceiverCapabilities` are set. If both ports fail, a `DenonConnectionException` is thrown; its inner `AggregateException` contains the individual errors.
+On success, `HttpPort`, `DeviceInfo`, `ReceiverProfileId`, and initially known `ReceiverCapabilities` are set. If both ports fail, a `DenonConnectionException` is thrown; its inner `AggregateException` contains the individual errors.
+
+### Receiver-specific HTTP profiles
+
+Denon web interfaces are not consistent across model generations. A receiver can use a modern AppCommand interface for basic status while using a different API for an individual Setup page such as **Speaker Levels**. For that reason, `DenonAvrNet` selects an internal HTTP profile during `InitializeAsync()` and exposes its identifier through `ReceiverProfileId`:
+
+| Profile ID | Selected for | Speaker-preset level provider |
+| --- | --- | --- |
+| `avc-x6800h` | Model name containing `X6800` | Implemented: AJAX API on port `11080` |
+| `avc-x6700h` | Model name containing `X6700` | Deliberately unsupported until its exact requests and responses are implemented |
+| `legacy-goform` | Other receivers initialized through port `80` | Deliberately unsupported until implemented for that receiver family |
+| `unknown` | Any other receiver | Deliberately unsupported |
+
+The public Main Zone and Telnet APIs remain unchanged. Profiles isolate only model-specific HTTP details, so adding a receiver-specific feature provider does not require a separate public client class or duplicated control code.
+
+```csharp
+await receiver.InitializeAsync();
+Console.WriteLine(receiver.ReceiverProfileId); // e.g. "avc-x6800h"
+```
 
 ### `UpdateAsync`
 
@@ -219,6 +238,8 @@ await receiver.SetSpeakerPresetLevelAsync(speakerIndex: 2, decibels: -3.5);
 ```
 
 `GetSpeakerPresetLevelsAsync()` reads `/ajax/speakers/get_config?type=5`. `SetSpeakerPresetLevelAsync()` sends the value in tenths of a dB (`-35` for `-3.5 dB`) to `/ajax/speakers/set_config?type=20`. `SpeakerIndex` is the web-interface index supplied by the receiver, not a `DenonSpeakerLevelChannel` enum value.
+
+These methods are currently available only when `ReceiverProfileId` is `avc-x6800h`. On an X6700H, an older GoForm receiver, or an unknown profile, they throw `NotSupportedException` with an explanation instead of sending X6800H-specific requests to an incompatible AVR. Once a receiver's Speaker Levels web requests have been captured, its profile receives a dedicated `ISpeakerPresetLevelProvider` implementation.
 
 Only the test-tone stop request `<StopTestTone></StopTestTone>` has been observed so far. The library therefore does not yet implement start or stop commands until the corresponding start request has been recorded unambiguously.
 
