@@ -255,7 +255,7 @@ static async Task ShowSpeakerLevelsAsync(
     Console.WriteLine("Aktive Speaker-Preset-Pegel:");
     foreach (var level in levels)
     {
-        Console.WriteLine($"  Speaker-Index {level.SpeakerIndex,2}: {level.Decibels:0.0} dB");
+        Console.WriteLine($"  {(level.Channel?.ToString() ?? "Unbekannt"),-42} {level.Decibels:0.0} dB (Index {level.SpeakerIndex})");
     }
 }
 

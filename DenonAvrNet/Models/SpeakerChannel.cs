@@ -24,5 +24,6 @@ public enum SpeakerChannel : ulong
 
     FrontDolbyLeft = 1UL << 25, FrontDolbyRight = 1UL << 26,
     SurroundDolbyLeft = 1UL << 27, SurroundDolbyRight = 1UL << 28,
-    BackDolbyLeft = 1UL << 29, BackDolbyRight = 1UL << 30
+    BackDolbyLeft = 1UL << 29, BackDolbyRight = 1UL << 30,
+    Subwoofer2 = 1UL << 31, Subwoofer3 = 1UL << 32, Subwoofer4 = 1UL << 33
 }

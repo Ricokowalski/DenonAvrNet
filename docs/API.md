@@ -268,7 +268,7 @@ var presetLevels = await receiver.GetSpeakerPresetLevelsAsync();
 
 foreach (var level in presetLevels)
 {
-    Console.WriteLine($"{level.SpeakerIndex}: {level.Decibels:0.0} dB");
+    Console.WriteLine($"{level.Channel}: {level.Decibels:0.0} dB");
 }
 
 await receiver.SetSpeakerPresetLevelAsync(speakerIndex: 2, decibels: -3.5);
@@ -511,6 +511,12 @@ Diese Methode prüft nicht, ob der Receiver den übergebenen Befehl unterstützt
 | --- | --- | --- |
 | `SpeakerIndex` | `int` | Index der modernen Denon-Weboberfläche auf Port 11080 |
 | `Decibels` | `double` | tatsächlicher Pegel des aktiven Speaker-Presets |
+| `Channel` | `SpeakerChannel?` | aus dem Web-Index abgeleiteter Kanal bzw. bei kombinierten Subwoofer-Einträgen eine Flag-Kombination |
+
+`DenonSpeakerPresetIndexConverter` enthält die vollständige, aus der
+AVC-X6800H-Weboberfläche ermittelte Zuordnung der Indizes `0` bis `35`. Dazu
+gehören auch `Subwoofer2`, `Subwoofer3` und `Subwoofer4`, die im
+`SpeakerChannel`-Flags-Enum ergänzt wurden.
 
 ## `DenonDeviceInfo`
 
