@@ -1,78 +1,72 @@
 # DenonAvrNet
 
-`DenonAvrNet` ist eine asynchrone C#/.NET-Bibliothek zur Steuerung kompatibler
-Denon- und Marantz-AV-Receiver über deren lokale HTTP/XML- und Telnet-Schnittstelle.
+`DenonAvrNet` is an asynchronous C#/.NET library for controlling compatible Denon and Marantz AV receivers through their local HTTP/XML and Telnet interfaces.
 
-Die Bibliothek wurde insbesondere mit einem **Denon AVC-X6800H** und dessen
-Kommunikations-API `0301` auf HTTP-Port `8080` entwickelt. Ältere Geräte mit
-der Statusschnittstelle auf Port `80` werden ebenfalls berücksichtigt.
+The library was developed primarily with a **Denon AVC-X6800H** and its `0301` communication API on HTTP port `8080`. Older devices with their status interface on port `80` are also supported.
 
-## Funktionsumfang
+## Features
 
-- automatische Erkennung der HTTP-Schnittstelle auf Port `80` oder `8080`
-- Auslesen von Modell, API-Version, Zonenanzahl, MAC-Adresse und Gerätekategorie
-- Status der Main Zone:
+- Automatic detection of the HTTP interface on port `80` or `8080`
+- Reads the model, API version, number of zones, MAC address, and device category
+- Main Zone status:
   - Power
-  - gewählter Eingang
-  - Master-Lautstärke
+  - Selected input
+  - Master volume
   - Mute
-  - verfügbare Eingänge
-- Status für Zone 2 und Zone 3 (Power, Eingang, Lautstärke, Mute)
-- zwischengespeicherte Eingangsliste mit gezielter Aktualisierung
-- automatische Kompatibilitätsumschaltung bei unvollständigen gebündelten
-  AppCommand-Antworten
-- erweiterte Audioinformationen auf kompatiblen Geräten:
-  - Audio-Eingangsmodus
-  - Audioausgang
-  - erkanntes Audioformat
-  - aktiver Soundmodus
-  - Samplerate
-  - aktive Lautsprecherkanäle
-- Main Zone ein- und ausschalten
-- Lautstärke erhöhen, verringern oder absolut in dB setzen
-- Mute ein- und ausschalten
-- Eingang anhand des sichtbaren Denon-Namens auswählen
-- Speaker Preset 1 oder 2 umschalten
-- Surround-Modus wählen: Auto, Stereo, Dolby Surround, DTS Neural:X,
-  Multi Ch Stereo oder Pure Direct
-- digitalen Eingangsdecoder auf Auto, PCM oder DTS setzen
-- Zone 2 und Zone 3 über Telnet-Port 23 steuern:
-  - ein-/ausschalten
-  - Lautstärke erhöhen, verringern oder absolut in dB setzen
-  - Mute ein-/ausschalten
-  - Eingang auswählen
-- temporäre Kanalpegel des aktuellen Surroundmodus über Telnet (`CV`) lesen und steuern:
-  - einzelne Kanäle sowie alle konfigurierten Kanäle lesen (`CV?` / `CVEND`)
-  - Werte von -12,0 bis +12,0 dB setzen oder schrittweise ändern
-  - Subwoofer-Kanäle auf OFF setzen und alle Kanalpegel auf Denon-Werkswerte zurücksetzen
-- tatsächliche Pegel des aktiven Speaker-Presets der aktuellen Weboberfläche über HTTP-Port 11080 lesen und setzen
-- dauerhafte Statusüberwachung für Headless-Betrieb:
-  - Telnet-Ereignisse werden sofort empfangen
-  - `OPINFASP`-Speaker-Matrizen werden dekodiert und doppelte Telemetrie wird gefiltert
-  - automatisches Wiederverbinden nach einer Telnet-Unterbrechung
-  - HTTP-Statusabfrage alle 15 Sekunden als Rückfallebene
-- beliebige rohe Denon-HTTP-Befehlspfade senden
-- gemeinsame Main-Zone-Steuerung über HTTP oder Telnet mit automatischer Auswahl
-- Unterstützung von `CancellationToken`
+  - Available inputs
+- Zone 2 and Zone 3 status (power, input, volume, mute)
+- Cached input list with explicit refresh
+- Automatic compatibility fallback for incomplete bundled AppCommand responses
+- Extended audio information on compatible devices:
+  - Audio input mode
+  - Audio output
+  - Detected audio format
+  - Active sound mode
+  - Sample rate
+  - Active speaker channels
+- Turn the Main Zone on and off
+- Increase, decrease, or set volume absolutely in dB
+- Enable and disable mute
+- Select an input by its visible Denon name
+- Switch speaker preset 1 or 2
+- Select surround mode: Auto, Stereo, Dolby Surround, DTS Neural:X, Multi Ch Stereo, or Pure Direct
+- Set the digital input decoder to Auto, PCM, or DTS
+- Control Zone 2 and Zone 3 through Telnet port 23:
+  - Turn on/off
+  - Increase, decrease, or set volume absolutely in dB
+  - Enable/disable mute
+  - Select input
+- Read and control the temporary channel levels of the current surround mode through Telnet (`CV`):
+  - Read individual channels or all configured channels (`CV?` / `CVEND`)
+  - Set levels from -12.0 to +12.0 dB or change them in steps
+  - Set subwoofer channels to OFF and reset all channel levels to Denon factory values
+- Read and set the actual levels of the active speaker preset in the current web interface through HTTP port 11080
+- Persistent status monitoring for headless operation:
+  - Telnet events are received immediately
+  - `OPINFASP` speaker matrices are decoded and duplicate telemetry is filtered
+  - Automatic reconnection after a Telnet interruption
+  - HTTP status query every 15 seconds as a fallback
+- Send arbitrary raw Denon HTTP command paths
+- Unified Main Zone control through HTTP or Telnet with automatic selection
+- `CancellationToken` support
 
-## Voraussetzungen
+## Requirements
 
 - .NET 10 SDK
-- Receiver und Anwendung im selben erreichbaren Netzwerk
-- aktivierte Netzwerksteuerung am Receiver
+- Receiver and application on the same reachable network
+- Network control enabled on the receiver
 
-## Projektstruktur
+## Project structure
 
-| Projekt | Inhalt |
+| Project | Contents |
 | --- | --- |
-| `DenonAvrNet` | wiederverwendbare Klassenbibliothek |
-| `DenonAvrNet.Sample` | interaktives Konsolenbeispiel |
-| `DenonAvrNet.Tests` | Unit- und Protokolltests |
+| `DenonAvrNet` | Reusable class library |
+| `DenonAvrNet.Sample` | Interactive console sample |
+| `DenonAvrNet.Tests` | Unit and protocol tests |
 
-## Einbinden
+## Referencing the library
 
-Solange kein NuGet-Paket veröffentlicht ist, wird die Bibliothek als
-Projektverweis eingebunden:
+Until a NuGet package is published, add the library as a project reference:
 
 ```xml
 <ItemGroup>
@@ -80,7 +74,7 @@ Projektverweis eingebunden:
 </ItemGroup>
 ```
 
-## Schnellstart
+## Quick start
 
 ```csharp
 using DenonAvrNet;
@@ -90,22 +84,21 @@ using var receiver = new DenonAvrClient("10.37.0.190");
 
 var device = await receiver.InitializeAsync();
 Console.WriteLine($"{device.ModelName}, API {device.CommunicationApiVersion}");
-Console.WriteLine($"HTTP-Port: {receiver.HttpPort}");
+Console.WriteLine($"HTTP port: {receiver.HttpPort}");
 
 var state = await receiver.UpdateAsync();
 Console.WriteLine($"Power: {state.Power}");
-Console.WriteLine($"Eingang: {state.Input}");
-Console.WriteLine($"Lautstärke: {state.VolumeDb} dB");
-Console.WriteLine($"Audioformat: {state.Audio?.AudioFormat ?? "unbekannt"}");
-Console.WriteLine($"Soundmodus: {state.Audio?.SoundMode ?? "unbekannt"}");
-Console.WriteLine($"Aktive Lautsprecher: {string.Join(", ", state.Audio?.ActiveSpeakers ?? [])}");
-Console.WriteLine($"Aktive Kanäle: {state.Audio?.ActiveSpeakerChannels ?? SpeakerChannel.None}");
+Console.WriteLine($"Input: {state.Input}");
+Console.WriteLine($"Volume: {state.VolumeDb} dB");
+Console.WriteLine($"Audio format: {state.Audio?.AudioFormat ?? "unknown"}");
+Console.WriteLine($"Sound mode: {state.Audio?.SoundMode ?? "unknown"}");
+Console.WriteLine($"Active speakers: {string.Join(", ", state.Audio?.ActiveSpeakers ?? [])}");
+Console.WriteLine($"Active channels: {state.Audio?.ActiveSpeakerChannels ?? SpeakerChannel.None}");
 ```
 
-`InitializeAsync()` muss einmal erfolgreich ausgeführt werden, bevor Status-
-oder Steuerbefehle verwendet werden können.
+`InitializeAsync()` must complete successfully once before status or control commands can be used.
 
-## Receiver steuern
+## Controlling the receiver
 
 ```csharp
 await receiver.PowerOnAsync();
@@ -117,72 +110,55 @@ await receiver.SetMuteAsync(false);
 await receiver.SetInputAsync("Media Player");
 ```
 
-## Gemeinsame HTTP-/Telnet-Steuerung
+## Unified HTTP/Telnet control
 
-Die normalen Main-Zone-Methoden (`PowerOnAsync`, `SetVolumeAsync`, `SetMuteAsync`,
-`SetInputAsync` usw.) bilden nun eine gemeinsame API. Sie haben keinen doppelten
-HTTP- und Telnet-Namen mehr. Die Auswahl ist über `DenonControlProtocol` steuerbar:
+The regular Main Zone methods (`PowerOnAsync`, `SetVolumeAsync`, `SetMuteAsync`, `SetInputAsync`, and so on) form a unified API. There are no separate HTTP and Telnet method names. Choose the transport with `DenonControlProtocol`:
 
 ```csharp
-// Standard: Auto. Nach InitializeAsync wird HTTP verwendet; ohne HTTP-Initialisierung Telnet.
+// Default: Auto. After InitializeAsync, HTTP is used; without HTTP initialization, Telnet is used.
 await receiver.SetVolumeAsync(-25.0);
 
-// Einen einzelnen Befehl ausdrücklich über Telnet senden:
+// Explicitly send one command over Telnet:
 await receiver.SetInputAsync("CBL/SAT", DenonControlProtocol.Telnet);
 
-// Für eine Anwendung dauerhaft Telnet bevorzugen (z. B. AVR-X4100W):
+// Prefer Telnet permanently in an application (for example, AVR-X4100W):
 receiver.PreferredControlProtocol = DenonControlProtocol.Telnet;
 ```
 
-Bei `Auto` wird nach erfolgreicher HTTP-Initialisierung zunächst HTTP verwendet.
-Antwortet der HTTP-Steuerbefehl mit einem Netzwerk-/HTTP-Fehler wie `403`, versucht
-die Bibliothek Telnet. Wird explizit `Http` oder `Telnet` gewählt, gibt es keinen
-Fallback – das macht Diagnose und vorhersehbares Verhalten möglich.
+With `Auto`, HTTP is tried after successful HTTP initialization. If the HTTP control command produces a network/HTTP error such as `403`, the library tries Telnet. When `Http` or `Telnet` is selected explicitly, there is no fallback, which enables predictable behavior and easier diagnostics.
 
-### Speaker-Preset-Pegel der Weboberfläche
+### Web-interface speaker-preset levels
 
-Die Werte unter **Setup → Speakers → Levels** sind nicht identisch mit den
-Telnet-`CV`-Werten. Für den AVC-X6800H liest und setzt die Library diese
-Speaker-Preset-Werte über die separate Weboberfläche auf Port `11080`:
+The values under **Setup → Speakers → Levels** are not the same as Telnet `CV` values. For the AVC-X6800H, the library reads and writes these speaker-preset values through the separate web interface on port `11080`:
 
 ```csharp
 var levels = await receiver.GetSpeakerPresetLevelsAsync();
 await receiver.SetSpeakerPresetLevelAsync(speakerIndex: 2, decibels: -3.5);
 ```
 
-`SpeakerIndex` entspricht dem vom Receiver gelieferten Weboberflächen-Index.
-Der Sample-Menüpunkt `L → 1` zeigt die aktuellen Werte samt Index; `L → H`
-setzt einen Wert. Der Testton ist noch nicht implementiert: bisher ist nur der
-Stop-Befehl der Weboberfläche bestätigt, nicht der eindeutige Start-Befehl.
+`SpeakerIndex` is the web-interface index provided by the receiver. The sample menu item `L → 1` shows current values together with their indices; `L → H` sets a value. The test tone is not implemented yet: only the web-interface stop command is confirmed, not an unambiguous start command.
 
-### Feature- und Gerätefähigkeiten
+### Feature and device capabilities
 
-`AvrFeature` beschreibt eine Funktion der Bibliothek und nicht die Hardware. Mit
-`GetSupportedProtocols()` lässt sich pro Funktion abfragen, welcher Übertragungsweg
-implementiert ist:
+`AvrFeature` describes a library feature, not hardware. Use `GetSupportedProtocols()` to find which transport is implemented for a feature:
 
 ```csharp
 var transports = receiver.GetSupportedProtocols(AvrFeature.MainZoneVolume);
-// enthält Http und Telnet
+// Contains Http and Telnet.
 ```
 
-`ReceiverCapabilities` beschreibt hingegen den erkannten AVR. Nach
-`InitializeAsync()` sind HTTP, AppCommand, Zonenanzahl sowie Zone 2/3 bekannt.
-Die Unterstützung von AppCommand0300 wird beim ersten `UpdateAsync()` erkannt.
-Telnet wird bewusst nicht automatisch aktiv abgefragt; mit `PW?` kann es ohne
-Zustandsänderung geprüft werden:
+`ReceiverCapabilities`, on the other hand, describes the detected AVR. After `InitializeAsync()`, HTTP, AppCommand, the zone count, and Zone 2/3 are known. Support for AppCommand0300 is detected at the first `UpdateAsync()`. Telnet is intentionally not probed automatically; `PW?` can check it without changing state:
 
 ```csharp
 await receiver.InitializeAsync();
 var capabilities = await receiver.ProbeReceiverCapabilitiesAsync();
 
-Console.WriteLine(capabilities.SupportsTelnet);       // true oder false
-Console.WriteLine(capabilities.SupportsAppCommand0300); // true, false oder vor Update null
+Console.WriteLine(capabilities.SupportsTelnet);          // true or false
+Console.WriteLine(capabilities.SupportsAppCommand0300);  // true, false, or null before UpdateAsync
 Console.WriteLine(receiver.IsFeatureAvailable(AvrFeature.Zone3Control));
 ```
 
-Ein Steuerbefehl verändert `receiver.State` nicht vorab. Für einen vom Gerät
-bestätigten Zustand muss anschließend erneut abgefragt werden:
+A control command does not update `receiver.State` in advance. Query the receiver again to obtain a device-confirmed state:
 
 ```csharp
 await receiver.SetInputAsync("CBL/SAT");
@@ -190,20 +166,17 @@ await Task.Delay(350);
 var confirmedState = await receiver.UpdateAsync();
 ```
 
-Die Liste `AvailableInputs` wird beim ersten Statusabruf geladen und danach
-zwischengespeichert. Nach Änderungen an der Eingangs-Konfiguration des Receivers
-kann sie ausdrücklich neu gelesen werden:
+`AvailableInputs` is loaded on the first status request and cached afterwards. Explicitly reload it after changing the receiver's input configuration:
 
 ```csharp
 var currentInputs = await receiver.RefreshInputsAsync();
 ```
 
-## Eingangsnamen
+## Input names
 
-Denon verwendet teilweise andere Protokollnamen als in der Bedienoberfläche.
-`SetInputAsync()` bildet die wichtigsten Anzeigenamen automatisch ab:
+Denon sometimes uses protocol names that differ from the user interface. `SetInputAsync()` maps the most important display names automatically:
 
-| Anzeigename | Denon-Protokollname |
+| Display name | Denon protocol name |
 | --- | --- |
 | `CBL/SAT` | `SAT/CBL` |
 | `Media Player` | `MPLAY` |
@@ -213,45 +186,40 @@ Denon verwendet teilweise andere Protokollnamen als in der Bedienoberfläche.
 | `NETWORK` | `NET` |
 | `iPod/USB` | `USB/IPOD` |
 | `AUX` | `AUX1` |
-| `Tuner` oder `FM` | `TUNER` |
+| `Tuner` or `FM` | `TUNER` |
 
-Die Zuordnung arbeitet ohne Beachtung der Groß-/Kleinschreibung. Bereits
-bekannte Protokollnamen wie `MPLAY` oder `SAT/CBL` können ebenfalls direkt
-übergeben werden.
+Mapping is case-insensitive. Known protocol names such as `MPLAY` or `SAT/CBL` can also be passed directly.
 
-## Statusmodell
+## Status model
 
-`UpdateAsync()` liefert einen `DenonReceiverState` und speichert denselben
-Snapshot in `receiver.State`.
+`UpdateAsync()` returns a `DenonReceiverState` and stores the same snapshot in `receiver.State`.
 
-| Eigenschaft | Bedeutung |
+| Property | Meaning |
 | --- | --- |
-| `IsPoweredOn` | vereinfachter boolescher Power-Status |
-| `Power` | unveränderter Power-Text des Receivers |
-| `Input` | aktueller Denon-Protokollname des Eingangs |
-| `VolumeDb` | Master-Lautstärke in dB oder `null` |
-| `IsMuted` | Mute-Status oder `null` |
-| `AvailableInputs` | nicht deaktivierte Standardeingänge |
-| `Audio` | optionale erweiterte Audioinformationen |
-| `Zone2`, `Zone3` | optionale Status-Snapshots der zusätzlichen Zonen |
+| `IsPoweredOn` | Simplified Boolean power status |
+| `Power` | Unchanged receiver power text |
+| `Input` | Current Denon input protocol name |
+| `VolumeDb` | Master volume in dB or `null` |
+| `IsMuted` | Mute status or `null` |
+| `AvailableInputs` | Standard inputs that are not disabled |
+| `Audio` | Optional extended audio information |
+| `Zone2`, `Zone3` | Optional status snapshots for additional zones |
 
-`DenonAudioInfo` enthält:
+`DenonAudioInfo` contains:
 
-| Eigenschaft | Bedeutung |
+| Property | Meaning |
 | --- | --- |
-| `InputMode` | beispielsweise `HDMI` |
-| `Output` | beispielsweise `Speaker` |
-| `AudioFormat` | erkanntes Eingangssignal, z. B. Dolby Digital Plus |
-| `SoundMode` | aktiver Wiedergabe-/Upmix-Modus |
-| `SampleRate` | beispielsweise `48 kHz` |
-| `ActiveSpeakers` | aktive Denon-Kanalkürzel wie `FL`, `C`, `SW` oder `TFL` |
-| `ActiveSpeakerChannels` | dieselben Kanäle als kombinierbares `SpeakerChannel`-Flags-Enum |
+| `InputMode` | For example, `HDMI` |
+| `Output` | For example, `Speaker` |
+| `AudioFormat` | Detected input signal, e.g. Dolby Digital Plus |
+| `SoundMode` | Active playback/upmix mode |
+| `SampleRate` | For example, `48 kHz` |
+| `ActiveSpeakers` | Active Denon channel abbreviations such as `FL`, `C`, `SW`, or `TFL` |
+| `ActiveSpeakerChannels` | The same channels as a combinable `SpeakerChannel` flags enum |
 
-`Audio` kann bei älteren oder inkompatiblen Receivern `null` sein. Auch einzelne
-Werte können fehlen. Ein vom Receiver geliefertes `Unknown` wird bewusst nicht
-umgedeutet.
+`Audio` can be `null` on older or incompatible receivers, and individual values can be absent. A receiver-reported `Unknown` is deliberately not reinterpreted.
 
-## Fehlerbehandlung und Abbruch
+## Errors and cancellation
 
 ```csharp
 using DenonAvrNet.Exceptions;
@@ -264,83 +232,66 @@ try
 }
 catch (DenonConnectionException exception)
 {
-    Console.Error.WriteLine($"Receiver nicht erreichbar: {exception.Message}");
+    Console.Error.WriteLine($"Receiver is unreachable: {exception.Message}");
 }
 catch (DenonProtocolException exception)
 {
-    Console.Error.WriteLine($"Unerwartete Receiver-Antwort: {exception.Message}");
+    Console.Error.WriteLine($"Unexpected receiver response: {exception.Message}");
 }
 catch (OperationCanceledException)
 {
-    Console.Error.WriteLine("Vorgang abgebrochen oder Zeitlimit erreicht.");
+    Console.Error.WriteLine("Operation cancelled or timed out.");
 }
 ```
 
-| Ausnahme | Bedeutung |
+| Exception | Meaning |
 | --- | --- |
-| `DenonConnectionException` | auf keinem unterstützten Port wurden gültige Geräteinformationen gefunden |
-| `DenonProtocolException` | XML oder erwartete Denon-Statuswerte sind ungültig bzw. fehlen |
-| `HttpRequestException` | HTTP- oder Netzwerkfehler während einer Anfrage |
-| `InvalidOperationException` | der Client wurde noch nicht initialisiert |
-| `ArgumentOutOfRangeException` | Lautstärke außerhalb von `-80,0` bis `+18,0 dB` |
+| `DenonConnectionException` | Valid device information was not found on any supported port |
+| `DenonProtocolException` | XML or expected Denon status values are invalid or missing |
+| `HttpRequestException` | HTTP or network error during a request |
+| `InvalidOperationException` | The client has not been initialized yet |
+| `ArgumentOutOfRangeException` | Volume outside `-80.0` to `+18.0 dB` |
 
-## Raw Commands
+## Raw commands
 
-Noch nicht als eigene Methode verfügbare Receiverfunktionen können über einen
-vollständigen Denon-Befehlspfad angesprochen werden:
+Receiver features that do not yet have a dedicated method can be addressed with a complete Denon command path:
 
 ```csharp
 await receiver.SendCommandAsync(
     "/goform/formiPhoneAppDirect.xml?VSMONI2");
 ```
 
-Der Pfad muss mit `/` beginnen. Die aufrufende Anwendung ist dafür
-verantwortlich, dass der Befehl vom jeweiligen Receiver unterstützt wird.
+The path must begin with `/`. The calling application is responsible for ensuring that the specific receiver supports the command.
 
-## Sample und Tests starten
+## Running the sample and tests
 
 ```powershell
 dotnet run --project .\DenonAvrNet.Sample
 dotnet test
 ```
 
-Im Sample startet die Menüoption `D` fünf aufeinanderfolgende Statusabfragen.
-Diese Diagnose ist rein lesend und ändert keine Receiver-Einstellung.
+In the sample, menu option `D` performs five consecutive status requests. This diagnostic is read-only and does not change any receiver setting.
 
-## Technische Hinweise
+## Technical notes
 
-- Port `8080` verwendet für den Basisstatus `AppCommand.xml` mit
-  `cmd id="1"`. Vier Statusbefehle werden zunächst in einem Request gebündelt.
-- Liefert ein Receiver darauf keine vollständig auswertbare Antwort, wiederholt
-  der Client den Abruf mit Einzelrequests und merkt sich diese Variante bis zur
-  nächsten Initialisierung.
-- Audioformat und aktive Lautsprecher werden über `AppCommand0300.xml` mit
-  `cmd id="3"` abgefragt.
-- Die Detailabfragen erfolgen sequenziell; parallele Zugriffe werden vermieden.
-- Die Eingangsliste wird separat geladen und im Client zwischengespeichert.
-- Der AVC-X6800H benötigt nach der XML-Deklaration ein CRLF. Ohne diesen
-  Zeilenumbruch antwortet er mit HTTP 200 und einem leeren `<rx>`-Element.
-- `DenonAvrClient` sollte nicht gleichzeitig über mehrere parallele
-  `UpdateAsync()`-Aufrufe verwendet werden.
+- Port `8080` uses `AppCommand.xml` with `cmd id="1"` for base status. Four status commands are initially bundled in one request.
+- If a receiver does not return a fully usable response, the client repeats the query with individual requests and remembers this variant until the next initialization.
+- Audio format and active speakers are queried through `AppCommand0300.xml` with `cmd id="3"`.
+- Detail queries are sequential; parallel access is avoided.
+- The input list is loaded separately and cached in the client.
+- The AVC-X6800H requires a CRLF after the XML declaration. Without it, the receiver returns HTTP 200 with an empty `<rx>` element.
+- Do not use `DenonAvrClient` concurrently through multiple parallel `UpdateAsync()` calls.
 
-Weitere Details stehen in der [API-Dokumentation](docs/API.md), den
-[Protokollnotizen](docs/PROTOCOL.md) und der
-[Geräte-Testanleitung](docs/DEVICE-TESTING.md).
+Further details are available in the [API documentation](docs/API.md), [protocol notes](docs/PROTOCOL.md), and [device-testing guide](docs/DEVICE-TESTING.md).
 
-## Aktuelle Grenzen
+## Current limitations
 
-- Der Schwerpunkt liegt derzeit auf der Main Zone.
-- Umbenannte Eingänge werden noch nicht separat auf ihre benutzerdefinierten
-  Anzeigenamen abgebildet.
-- Ereignisse werden über eine dauerhaft geöffnete Telnet-Verbindung empfangen;
-  eigene Ereignis-Handler sollten keine lang laufenden Arbeiten ausführen.
+- The current focus is the Main Zone.
+- Renamed inputs are not yet mapped separately to their custom display names.
+- Events are received through a permanently open Telnet connection; custom event handlers should not perform long-running work.
 
-## Referenz und Lizenz
+## Reference and license
 
-Die Implementierung wurde durch
-[`ol-iver/denonavr`](https://github.com/ol-iver/denonavr) inspiriert. Die
-ursprüngliche Referenzversion basiert auf Commit
-`98566b286efab12496ef623eda498db8bcb5ea09` (`1.4.0-dev`).
+The implementation was inspired by [`ol-iver/denonavr`](https://github.com/ol-iver/denonavr). The original reference version is based on commit `98566b286efab12496ef623eda498db8bcb5ea09` (`1.4.0-dev`).
 
-Lizenz- und Herkunftshinweise befinden sich in [LICENSE.txt](LICENSE.txt) und
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+License and provenance notices are in [LICENSE.txt](LICENSE.txt) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

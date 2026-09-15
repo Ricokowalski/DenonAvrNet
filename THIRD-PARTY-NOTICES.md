@@ -7,8 +7,6 @@ DenonAvrNet is a C# port inspired by the `denonavr` Python project:
 - Original author: Oliver Goetz
 - Original license: MIT
 
-The original MIT license text and copyright notice are reproduced in
-`LICENSE`.
+The original MIT license text and copyright notice are reproduced in `LICENSE`.
 
-Denon and Marantz are trademarks of their respective owners. This project is
-not affiliated with or endorsed by them.
+Denon and Marantz are trademarks of their respective owners. This project is not affiliated with or endorsed by them.

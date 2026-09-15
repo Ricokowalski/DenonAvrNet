@@ -1,45 +1,40 @@
-# Denon-HTTP/XML- und Telnet-Protokollnotizen
+# Denon HTTP/XML and Telnet protocol notes
 
-Dieses Dokument beschreibt die von `DenonAvrNet` tatsächlich verwendeten
-Protokollteile. Es ist keine vollständige Dokumentation aller Denon-Befehle.
-Unterstützte Funktionen können je nach Modell und Firmware abweichen.
+This document describes the protocol portions actually used by `DenonAvrNet`. It is not complete documentation for every Denon command. Supported features can vary by model and firmware.
 
-## Port- und Geräteerkennung
+## Port and device detection
 
-Die Initialisierung versucht der Reihe nach:
+Initialization tries, in order:
 
 1. `GET http://HOST:80/goform/Deviceinfo.xml`
 2. `GET http://HOST:8080/goform/Deviceinfo.xml`
 
-Eine HTTP-200-Antwort allein reicht nicht. Das XML muss ein
-`Device_Info`-Wurzelelement und einen nicht leeren `ModelName` enthalten.
+An HTTP 200 response alone is not sufficient. The XML must contain a `Device_Info` root element and a non-empty `ModelName`.
 
-Der erkannte Port wird anschließend für Status- und Steuerbefehle verwendet.
+The detected port is subsequently used for status and control commands.
 
-## Verwendete Endpunkte
+## Endpoints in use
 
-| Methode | Endpunkt | Verwendung |
+| Method | Endpoint | Purpose |
 | --- | --- | --- |
-| `GET` | `/goform/Deviceinfo.xml` | Geräteerkennung und Eigenschaften |
-| `POST` | `/goform/AppCommand.xml` | Basisstatus auf modernen Receivern |
-| `POST` | `/goform/AppCommand0300.xml` | Audio- und Lautsprecherdetails |
-| `GET` | `/goform/formMainZone_MainZoneXmlStatus.xml` | Status älterer Receiver |
+| `GET` | `/goform/Deviceinfo.xml` | Device detection and properties |
+| `POST` | `/goform/AppCommand.xml` | Base status on modern receivers |
+| `POST` | `/goform/AppCommand0300.xml` | Audio and speaker details |
+| `GET` | `/goform/formMainZone_MainZoneXmlStatus.xml` | Status of older receivers |
 | `GET` | `/goform/formiPhoneAppPower.xml?...` | Power |
-| `GET` | `/goform/formiPhoneAppVolume.xml?...` | absolute Lautstärke |
+| `GET` | `/goform/formiPhoneAppVolume.xml?...` | Absolute volume |
 | `GET` | `/goform/formiPhoneAppMute.xml?...` | Mute |
-| `GET` | `/goform/formiPhoneAppDirect.xml?...` | direkte Steuerbefehle |
+| `GET` | `/goform/formiPhoneAppDirect.xml?...` | Direct control commands |
 
-## AppCommand auf dem AVC-X6800H
+## AppCommand on the AVC-X6800H
 
-Der XML-Parser des getesteten AVC-X6800H verarbeitet eine formal gültige,
-vollständig einzeilige Anfrage nicht korrekt. Folgender Body führt zu einer
-leeren Antwort:
+The XML parser of the tested AVC-X6800H does not correctly process a formally valid, fully single-line request. The following body produces an empty response:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?><tx><cmd id="1">GetAllZonePowerStatus</cmd></tx>
 ```
 
-Der Receiver antwortet dabei irreführend mit HTTP 200:
+The receiver misleadingly replies with HTTP 200:
 
 ```xml
 <?xml version="1.0" encoding="utf-8" ?>
@@ -47,32 +42,29 @@ Der Receiver antwortet dabei irreführend mit HTTP 200:
 </rx>
 ```
 
-Zwischen XML-Deklaration und Dokumentelement muss deshalb explizit `CRLF`
-stehen:
+An explicit `CRLF` must therefore appear between the XML declaration and document element:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <tx><cmd id="1">GetAllZonePowerStatus</cmd></tx>
 ```
 
-Der tatsächlich erzeugte String verwendet `\r\n`, unabhängig vom
-Betriebssystem. Der Request wird UTF-8 ohne BOM und mit folgendem Header
-gesendet:
+The generated string uses `\r\n` independently of the operating system. The request is sent as UTF-8 without a BOM and with this header:
 
 ```text
 Content-Type: text/xml; charset=utf-8
 ```
 
-## Basisstatus: `AppCommand.xml`
+## Base status: `AppCommand.xml`
 
-Basisbefehle verwenden `cmd id="1"` und den Befehlsnamen als Textinhalt:
+Base commands use `cmd id="1"` and the command name as text content:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <tx><cmd id="1">GetAllZonePowerStatus</cmd></tx>
 ```
 
-Beispielantwort:
+Example response:
 
 ```xml
 <rx>
@@ -84,25 +76,17 @@ Beispielantwort:
 </rx>
 ```
 
-Die Bibliothek bündelt Power, Lautstärke, Mute und Quelle zunächst in einem
-Request. Die vier `<cmd>`-Antworten werden in derselben Reihenfolge ausgewertet.
-Die Eingangsliste wird separat gelesen und anschließend zwischengespeichert.
+The library initially bundles power, volume, mute, and source into one request. The four `<cmd>` responses are evaluated in the same order. The input list is read separately and then cached.
 
-Enthält die gebündelte Antwort nicht genau vier Ergebnisse oder keinen
-auswertbaren Main-Zone-Wert, sendet der Client die vier Statusbefehle nochmals
-einzeln. Er merkt sich dieses Receiververhalten bis zur nächsten
-Initialisierung, sodass spätere Aktualisierungen den erfolglosen gebündelten
-Versuch überspringen.
+If the bundled response does not contain exactly four results or no usable Main Zone value, the client resends the four status commands individually. It remembers this receiver behavior until the next initialization, so later updates skip the unsuccessful bundled attempt.
 
-Ein nicht unterstützter Einzelbefehl kann als `<error>` zurückgegeben werden.
-Solange mindestens ein auswertbarer Main-Zone-Basiswert vorhanden ist, können
-die übrigen Werte weiterverwendet werden.
+An unsupported individual command can be returned as `<error>`. As long as at least one usable Main Zone base value is available, the remaining values can continue to be used.
 
-## Detailstatus: `AppCommand0300.xml`
+## Detailed status: `AppCommand0300.xml`
 
-Detailbefehle verwenden `cmd id="3"`, ein `name`-Element und eine Parameterliste.
+Detail commands use `cmd id="3"`, a `name` element, and a parameter list.
 
-### Audioinformationen
+### Audio information
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -120,7 +104,7 @@ Detailbefehle verwenden `cmd id="3"`, ein `name`-Element und eine Parameterliste
 </tx>
 ```
 
-Beispielantwort:
+Example response:
 
 ```xml
 <rx>
@@ -137,7 +121,7 @@ Beispielantwort:
 </rx>
 ```
 
-### Aktive Lautsprecher
+### Active speakers
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -151,125 +135,90 @@ Beispielantwort:
 </tx>
 ```
 
-In der Antwort kennzeichnet `control="2"` einen aktuell aktiven Kanal.
-`control="1"` bezeichnet einen verfügbaren bzw. konfigurierten, aber aktuell
-nicht aktiven Kanal. `control="0"` wird nicht als aktiv ausgewertet.
+In the response, `control="2"` identifies a currently active channel. `control="1"` identifies an available or configured but currently inactive channel. `control="0"` is not treated as active.
 
-Die Bibliothek übernimmt den Textinhalt aktiver Parameter, beispielsweise
-`FL`, `FR`, `C`, `SW`, `SL`, `SR`, `TFL` oder `TFR`.
+The library takes the text content of active parameters, for example `FL`, `FR`, `C`, `SW`, `SL`, `SR`, `TFL`, or `TFR`.
 
-## Eingangssteuerung
+## Input control
 
-Die Eingangswahl erfolgt über:
+Input selection uses:
 
 ```text
-/goform/formiPhoneAppDirect.xml?SI<PROTOKOLLNAME>
+/goform/formiPhoneAppDirect.xml?SI<PROTOCOL_NAME>
 ```
 
-Beispiele:
+Examples:
 
-| Sichtbarer Name | HTTP-Befehl |
+| Display name | HTTP command |
 | --- | --- |
 | `CBL/SAT` | `...formiPhoneAppDirect.xml?SISAT/CBL` |
 | `Media Player` | `...formiPhoneAppDirect.xml?SIMPLAY` |
 | `TV AUDIO` | `...formiPhoneAppDirect.xml?SITV` |
 | `Blu-ray` | `...formiPhoneAppDirect.xml?SIBD` |
 
-Der Slash in `SAT/CBL` muss im Query-Befehl erhalten bleiben. Eine Übertragung
-als `%2F` wird von manchen Denon-Firmwareständen nicht als derselbe
-Protokollbefehl behandelt.
+The slash in `SAT/CBL` must remain in the query command. Some Denon firmware versions do not treat transmission as `%2F` as the same protocol command.
 
-## XML-Verarbeitung
+## XML processing
 
-Antworten werden mit folgenden Sicherheitsvorgaben gelesen:
+Responses are read with these security settings:
 
-- DTD-Verarbeitung ist deaktiviert.
-- Externe XML-Resolver sind deaktiviert.
-- Die maximale Dokumentgröße ist begrenzt.
-- Element- und Attributnamen werden ohne Beachtung der Groß-/Kleinschreibung
-  verglichen.
-- Textwerte werden getrimmt; leere Werte werden als nicht vorhanden behandelt.
+- DTD processing is disabled.
+- External XML resolvers are disabled.
+- The maximum document size is limited.
+- Element and attribute names are compared case-insensitively.
+- Text values are trimmed; empty values are treated as absent.
 
-## Typische Fehlerbilder
+## Typical errors
 
-### HTTP 403 bei älteren Statuspfaden
+### HTTP 403 on older status paths
 
-Auf aktuellen Receivern können ältere Endpunkte wie
-`formMainZone_MainZoneXmlStatus.xml` auf Port 8080 mit HTTP 403 antworten.
-`DenonAvrNet` verwendet dort stattdessen die AppCommand-Endpunkte.
+On current receivers, older endpoints such as `formMainZone_MainZoneXmlStatus.xml` can reply with HTTP 403 on port 8080. `DenonAvrNet` uses AppCommand endpoints there instead.
 
-### HTTP 200 mit leerem `<rx>`
+### HTTP 200 with an empty `<rx>`
 
-Beim AVC-X6800H deutet dies insbesondere auf einen fehlenden Zeilenumbruch
-zwischen XML-Deklaration und `<tx>` hin. Der Serverstatus allein darf deshalb
-nicht als erfolgreicher Protokollrequest interpretiert werden.
+On the AVC-X6800H, this especially indicates a missing line break between the XML declaration and `<tx>`. The server status alone must therefore not be interpreted as a successful protocol request.
 
-### Nicht alle Werte vorhanden
+### Not all values are present
 
-Mögliche Ursachen sind nicht unterstützte Kommandos, der Standby-Zustand oder
-gebündelte/parallele Requests. Die Bibliothek wechselt bei einer unvollständigen
-gebündelten Basisantwort automatisch auf sequenzielle Einzelabfragen und
-behandelt die Audioerweiterung als optional.
+Possible causes include unsupported commands, standby, or bundled/parallel requests. For an incomplete bundled base response, the library automatically switches to sequential individual queries and treats the audio extension as optional.
 
-### `AudioFormat` ist `Unknown`
+### `AudioFormat` is `Unknown`
 
-Dieser Wert stammt direkt aus `GetAudioInfo/signal`. Er wird nicht aus dem
-Soundmodus abgeleitet. `SoundMode` kann trotzdem beispielsweise
-`Dolby Surround` enthalten.
+This value comes directly from `GetAudioInfo/signal`; it is not inferred from the sound mode. `SoundMode` may nevertheless contain, for example, `Dolby Surround`.
 
 ## Telnet
 
-Viele Receiver stellen zusätzlich das Denon-IP-Steuerprotokoll auf TCP-Port 23
-bereit. Der AVC-X6800H-Test bestätigte die Erreichbarkeit dieses Ports.
-Die Befehle sind ASCII und enden mit `CR` (`\r`). Abfragen verwenden als
-Parameter `?`; Ereignisse und Antworten verwenden dieselbe Zeilenform wie ein
-Befehl.
+Many receivers also provide the Denon IP-control protocol on TCP port 23. Testing with the AVC-X6800H confirmed that this port is reachable. Commands are ASCII and end with `CR` (`\r`). Queries use `?` as their parameter; events and responses use the same line format as a command.
 
-`DenonAvrNet` verwendet Telnet für Main-Zone-Steuerung, Zone 2/3,
-Speaker-Presets, Soundmodi, Decoder, Ereignisse und die temporären
-Kanalpegel des aktuellen Surroundmodus.
+`DenonAvrNet` uses Telnet for Main Zone control, Zone 2/3, speaker presets, sound modes, decoders, events, and temporary channel levels for the current surround mode.
 
-### Temporäre Kanalpegel: `CV`
+### Temporary channel levels: `CV`
 
-`CV` ist nicht die dauerhafte Einstellung unter **Setup → Speakers → Levels**.
-Es beschreibt die Kanalpegel im aktuellen Surroundmodus; unberührte Kanäle
-können als `50` (= `0,0 dB`) gemeldet werden.
+`CV` is not the persistent setting under **Setup → Speakers → Levels**. It represents channel levels in the current surround mode; untouched channels can be reported as `50` (= `0.0 dB`).
 
-Die Kanalpegel liegen zwischen `38` und `62`: `50` entspricht `0,0 dB`;
-`38` entspricht `-12,0 dB`; `62` entspricht `+12,0 dB`. Halbe Dezibelwerte
-verwenden eine dritte Ziffer, etwa `505` für `+0,5 dB`.
+Channel levels range from `38` to `62`: `50` corresponds to `0.0 dB`; `38` to `-12.0 dB`; and `62` to `+12.0 dB`. Half-decibel values use a third digit, for example `505` for `+0.5 dB`.
 
-| Zweck | Beispiel |
+| Purpose | Example |
 | --- | --- |
-| Front links lesen | `CVFL?` |
-| Front links auf -1,5 dB setzen | `CVFL 485` |
-| Center um einen Schritt erhöhen | `CVC UP` |
-| alle vorhandenen Kanalpegel lesen | `CV?` |
-| Abschluss der Sammelantwort | `CVEND` |
-| Subwoofer ausschalten | `CVSW 00` |
-| alle Kanalpegel zurücksetzen | `CVZRL` |
+| Read Front Left | `CVFL?` |
+| Set Front Left to -1.5 dB | `CVFL 485` |
+| Increase Center by one step | `CVC UP` |
+| Read all present channel levels | `CV?` |
+| End marker for the aggregated response | `CVEND` |
+| Disable the subwoofer | `CVSW 00` |
+| Reset all channel levels | `CVZRL` |
 
-Bei `CV?` antwortet der Receiver nur für Kanäle, die in seiner aktuellen
-Lautsprecherkonfiguration vorhanden sind, und beendet die Folge mit `CVEND`.
-Die Library liest deshalb die gesamte Folge auf einer Verbindung und wandelt
-sie in `DenonSpeakerLevel`-Werte um.
+For `CV?`, the receiver responds only for channels present in its current speaker configuration and ends the sequence with `CVEND`. The library therefore reads the complete sequence on one connection and converts it into `DenonSpeakerLevel` values.
 
-Die Befehlscodes entsprechen dem offiziellen Denon-Control-Protocol für
-TCP-Port 23 und dem darin beschriebenen `CV`-Antwortformat.
+The command codes correspond to the official Denon Control Protocol for TCP port 23 and its documented `CV` response format.
 
-## Speaker-Preset-Pegel der Weboberfläche (HTTP-Port 11080)
+## Speaker-preset levels in the web interface (HTTP port 11080)
 
-Beim AVC-X6800H liegt die moderne Weboberfläche getrennt von der normalen
-HTTP/XML-API auf Port `11080`. Die echten Werte der Seite **Levels** werden
-mit folgenden GET-Aufrufen gelesen bzw. gesetzt:
+On the AVC-X6800H, the modern web interface is separate from the normal HTTP/XML API and runs on port `11080`. The actual values from the **Levels** page are read and set with these GET requests:
 
-| Zweck | Pfad |
+| Purpose | Path |
 | --- | --- |
-| Pegel des aktiven Speaker-Presets lesen | `/ajax/speakers/get_config?type=5&_=…` |
-| Speaker-Index 2 auf -3,5 dB setzen | `/ajax/speakers/set_config?type=20&data=%3CSpeaker%20index%3D%222%22%3E-35%3C%2FSpeaker%3E&_=…` |
+| Read levels of the active speaker preset | `/ajax/speakers/get_config?type=5&_…` |
+| Set speaker index 2 to -3.5 dB | `/ajax/speakers/set_config?type=20&data=%3CSpeaker%20index%3D%222%22%3E-35%3C%2FSpeaker%3E&_…` |
 
-Der Wert innerhalb von `Speaker` ist ein Zehntel-dB-Wert (`-35` = `-3,5 dB`).
-`DenonAvrClient.GetSpeakerPresetLevelsAsync()` und
-`SetSpeakerPresetLevelAsync()` verwenden diesen Port automatisch. Der
-Testton-Start ist noch nicht dokumentiert/implementiert; beobachtet wurde nur
-`<StopTestTone></StopTestTone>`.
+The value inside `Speaker` is in tenths of a decibel (`-35` = `-3.5 dB`). `DenonAvrClient.GetSpeakerPresetLevelsAsync()` and `SetSpeakerPresetLevelAsync()` use this port automatically. Starting the test tone is not yet documented or implemented; only `<StopTestTone></StopTestTone>` has been observed.
