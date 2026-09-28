@@ -50,6 +50,7 @@ The default `requestTimeout` is five seconds. The internal connection setup and 
 | `DeviceInfo` | `DenonDeviceInfo?` | Most recently detected device information |
 | `ReceiverProfileId` | `string?` | Selected receiver-specific HTTP profile; useful for diagnostics |
 | `ReceiverCapabilities` | `DenonReceiverCapabilities?` | Hardware capabilities detected for this AVR model |
+| `SpeakerPresetCount` | `int` | Number of speaker presets known for the selected receiver profile; zero means none are exposed by the profile |
 | `State` | `DenonReceiverState?` | Most recently confirmed status snapshot |
 
 `HttpPort`, `DeviceInfo`, `ReceiverProfileId`, `ReceiverCapabilities`, and `State` are `null` before their respective successful query.
@@ -69,12 +70,12 @@ On success, `HttpPort`, `DeviceInfo`, `ReceiverProfileId`, and initially known `
 
 Denon web interfaces are not consistent across model generations. A receiver can use a modern AppCommand interface for basic status while using a different API for an individual Setup page such as **Speaker Levels**. For that reason, `DenonAvrNet` selects an internal HTTP profile during `InitializeAsync()` and exposes its identifier through `ReceiverProfileId`:
 
-| Profile ID | Selected for | Speaker-preset level provider |
-| --- | --- | --- |
-| `avc-x6800h` | Model name containing `X6800` | Implemented: AJAX API on port `11080` |
-| `avc-x6700h` | Model name containing `X6700` | Deliberately unsupported until its exact requests and responses are implemented |
-| `legacy-goform` | Other receivers initialized through port `80` | Deliberately unsupported until implemented for that receiver family |
-| `unknown` | Any other receiver | Deliberately unsupported |
+| Profile ID | Selected for | Presets | Speaker setup provider |
+| --- | --- | ---: | --- |
+| `avc-x6800h` | Model name containing `X6800` | 2 | Speaker-preset levels and distances implemented through AJAX on port `11080` |
+| `avc-x6700h` | Model name containing `X6700` | 2 | Level/distance access deliberately unsupported until its exact requests and responses are implemented |
+| `legacy-goform` | Other receivers initialized through port `80` | 0 | Deliberately unsupported until implemented for that receiver family |
+| `unknown` | Any other receiver | 0 | Deliberately unsupported |
 
 The public Main Zone and Telnet APIs remain unchanged. Profiles isolate only model-specific HTTP details, so adding a receiver-specific feature provider does not require a separate public client class or duplicated control code.
 
@@ -149,7 +150,7 @@ var eventTransport = receiver.GetSupportedProtocols(AvrFeature.LiveEvents);
 | `AvrFeature` | Library transport |
 | --- | --- |
 | `MainZonePower`, `MainZoneVolume`, `MainZoneMute`, `MainZoneInput` | HTTP and Telnet |
-| `MainZoneStatus`, `AudioInformation`, `ActiveSpeakerStatus`, `SpeakerPresetLevelControl` | HTTP |
+| `MainZoneStatus`, `AudioInformation`, `ActiveSpeakerStatus`, `SpeakerPresetLevelControl`, `SpeakerDistanceControl` | HTTP |
 | `Zone2Control`, `Zone3Control`, `LiveEvents`, `ChannelLevelRead`, `ChannelLevelControl`, `SpeakerPresetControl`, `SurroundModeControl`, `DigitalInputModeControl` | Telnet |
 
 `DenonReceiverCapabilities` instead describes the **detected AVR model**. After `InitializeAsync()`, HTTP, AppCommand, the zone count, and Zone 2/3 are known. `SupportsTelnet` initially remains `null` so an untested port is not incorrectly treated as unsupported. A read-only `PW?` command checks the port without changing state:
@@ -240,6 +241,43 @@ await receiver.SetSpeakerPresetLevelAsync(speakerIndex: 2, decibels: -3.5);
 `GetSpeakerPresetLevelsAsync()` reads `/ajax/speakers/get_config?type=5`. `SetSpeakerPresetLevelAsync()` sends the value in tenths of a dB (`-35` for `-3.5 dB`) to `/ajax/speakers/set_config?type=20`. `SpeakerIndex` is the web-interface index supplied by the receiver, not a `DenonSpeakerLevelChannel` enum value.
 
 These methods are currently available only when `ReceiverProfileId` is `avc-x6800h`. On an X6700H, an older GoForm receiver, or an unknown profile, they throw `NotSupportedException` with an explanation instead of sending X6800H-specific requests to an incompatible AVR. Once a receiver's Speaker Levels web requests have been captured, its profile receives a dedicated `ISpeakerPresetLevelProvider` implementation.
+
+The selected profile also exposes its known preset count through `SpeakerPresetCount`. This is profile metadata rather than a live query to the AVR. The current X6800H and X6700H profiles report `2`; legacy and unknown profiles report `0`.
+
+Persistent level snapshots can be used when an application needs to make temporary changes and restore the previous setup later:
+
+```csharp
+var snapshot = await receiver.CreateSpeakerLevelSnapshotAsync();
+await receiver.SetSpeakerPresetLevelAsync(2, -3.5);
+await receiver.RestoreSpeakerLevelSnapshotAsync(snapshot);
+
+// Convenience slot owned by the client:
+await receiver.SaveSpeakerLevelSnapshotAsync();
+// ... changes ...
+await receiver.RestoreSpeakerLevelSnapshotAsync();
+```
+
+A snapshot records its creation time, receiver profile ID, and all persistent levels. Restoring a snapshot created for a different receiver profile throws `InvalidOperationException`. The convenience restore overload also throws if no snapshot has previously been saved.
+
+### Web-interface speaker distances (HTTP)
+
+On the AVC-X6800H, persistent speaker distances of the active speaker preset are available through the same port `11080` setup interface:
+
+```csharp
+var configuration = await receiver.GetSpeakerDistancesAsync();
+
+Console.WriteLine(configuration.ReceiverUnit);
+Console.WriteLine($"Step: {configuration.Step:0.###} m");
+
+foreach (var speaker in configuration.Speakers)
+    Console.WriteLine($"{speaker.SpeakerIndex}: {speaker.Channel} = {speaker.Meters:0.###} m");
+
+await receiver.SetSpeakerDistanceAsync(speakerIndex: 0, meters: 3.25);
+```
+
+`GetSpeakerDistancesAsync()` reads `/ajax/speakers/get_config?type=4`. The public API always returns `DenonSpeakerDistance.Meters` and `DenonSpeakerDistanceConfiguration.Step` in meters, even when the receiver is configured to display feet. `ReceiverUnit` preserves the AVR's current UI unit (`Feet` or `Meters`), and `M2FConvertRatio` exposes the optional conversion metadata returned by the receiver.
+
+`SetSpeakerDistanceAsync()` accepts meters, first reads the current distance configuration, converts the requested value to the receiver's active unit, and writes the receiver-specific raw value through `set_config?type=4`. A non-positive or non-finite distance is rejected. As with speaker-preset levels, the X6700H, legacy, and unknown profiles currently throw `NotSupportedException` instead of sending X6800H-specific requests.
 
 Only the test-tone stop request `<StopTestTone></StopTestTone>` has been observed so far. The library therefore does not yet implement start or stop commands until the corresponding start request has been recorded unambiguously.
 
@@ -429,6 +467,28 @@ This method does not check whether the receiver supports the supplied command.
 | `Channel` | `SpeakerChannel?` | Channel inferred from the web index, or a flags combination for combined subwoofer entries |
 
 `DenonSpeakerPresetIndexConverter` contains the full mapping for indices `0` through `35`, derived from the AVC-X6800H web interface. This includes `Subwoofer2`, `Subwoofer3`, and `Subwoofer4`, which were added to the `SpeakerChannel` flags enum.
+
+
+## `DenonSpeakerLevelSnapshot`
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `CreatedAt` | `DateTimeOffset` | UTC time at which the persistent levels were captured |
+| `ReceiverProfileId` | `string` | Receiver profile that created the snapshot |
+| `Levels` | `IReadOnlyList<DenonSpeakerPresetLevel>` | Persistent speaker-preset levels captured at that time |
+
+## `DenonSpeakerDistanceConfiguration` and `DenonSpeakerDistance`
+
+`DenonSpeakerDistanceConfiguration` describes the persistent distance setup returned by the receiver:
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `ReceiverUnit` | `DenonSpeakerDistanceUnit` | Unit currently selected in the AVR UI (`Feet` or `Meters`) |
+| `Step` | `double` | Receiver-reported adjustment step normalized to meters |
+| `M2FConvertRatio` | `int?` | Optional meter-to-feet conversion metadata returned by the AVR |
+| `Speakers` | `IReadOnlyList<DenonSpeakerDistance>` | Speaker distances of the active preset |
+
+Each `DenonSpeakerDistance` contains the web-interface `SpeakerIndex`, the normalized `Meters` value, and an optional typed `Channel` resolved with the same index mapping used by speaker-preset levels.
 
 ## `DenonDeviceInfo`
 

@@ -212,7 +212,9 @@ For `CV?`, the receiver responds only for channels present in its current speake
 
 The command codes correspond to the official Denon Control Protocol for TCP port 23 and its documented `CV` response format.
 
-## Speaker-preset levels in the web interface (HTTP port 11080)
+## Speaker setup in the web interface (HTTP port 11080)
+
+### Speaker-preset levels
 
 On the AVC-X6800H, the modern web interface is separate from the normal HTTP/XML API and runs on port `11080`. The actual values from the **Levels** page are read and set with these GET requests:
 
@@ -222,3 +224,24 @@ On the AVC-X6800H, the modern web interface is separate from the normal HTTP/XML
 | Set speaker index 2 to -3.5 dB | `/ajax/speakers/set_config?type=20&data=%3CSpeaker%20index%3D%222%22%3E-35%3C%2FSpeaker%3E&_…` |
 
 The value inside `Speaker` is in tenths of a decibel (`-35` = `-3.5 dB`). `DenonAvrClient.GetSpeakerPresetLevelsAsync()` and `SetSpeakerPresetLevelAsync()` use this port automatically. Starting the test tone is not yet documented or implemented; only `<StopTestTone></StopTestTone>` has been observed.
+
+### Speaker distances
+
+The AVC-X6800H exposes persistent distances of the active speaker preset through the same setup interface:
+
+| Purpose | Path |
+| --- | --- |
+| Read speaker distances | `/ajax/speakers/get_config?type=4&_…` |
+| Set one speaker distance | `/ajax/speakers/set_config?type=4&data=<encoded Distances XML>&_…` |
+
+The read response contains a `Distances` element with the receiver's selected `Unit`, raw `Step`, optional `M2FConvertRatio`, and a `List` of indexed `Speaker` values. `Unit=1` means feet and `Unit=2` means meters. Raw distance and step values use hundredths of the selected display unit.
+
+For example, the set payload is conceptually:
+
+```xml
+<Distances><List><Speaker index="0">325</Speaker></List></Distances>
+```
+
+when `325` is the raw value required by the receiver. `DenonAvrNet` does not expose these raw values publicly: it normalizes read values and steps to meters and converts meters back to the receiver's selected unit before writing.
+
+These port-11080 endpoints are currently enabled only by the `avc-x6800h` receiver profile. The X6700H has a different web setup implementation and therefore deliberately uses unsupported providers until its exact requests have been captured.

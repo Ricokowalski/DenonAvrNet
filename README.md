@@ -41,6 +41,9 @@ The library was developed primarily with a **Denon AVC-X6800H** and its `0301` c
   - Set levels from -12.0 to +12.0 dB or change them in steps
   - Set subwoofer channels to OFF and reset all channel levels to Denon factory values
 - Read and set the actual levels of the active speaker preset in the current web interface through HTTP port 11080
+- Expose the number of speaker presets known for the detected receiver profile
+- Capture and restore persistent speaker-preset level snapshots
+- Read and set persistent speaker distances; public distance values are normalized to meters
 - Persistent status monitoring for headless operation:
   - Telnet events are received immediately
   - `OPINFASP` speaker matrices are decoded and duplicate telemetry is filtered
@@ -127,16 +130,36 @@ receiver.PreferredControlProtocol = DenonControlProtocol.Telnet;
 
 With `Auto`, HTTP is tried after successful HTTP initialization. If the HTTP control command produces a network/HTTP error such as `403`, the library tries Telnet. When `Http` or `Telnet` is selected explicitly, there is no fallback, which enables predictable behavior and easier diagnostics.
 
-### Web-interface speaker-preset levels
+### Web-interface speaker setup
 
 The values under **Setup → Speakers → Levels** are not the same as Telnet `CV` values. For the AVC-X6800H, the library reads and writes these speaker-preset values through the separate web interface on port `11080`:
 
 ```csharp
+Console.WriteLine($"Speaker presets: {receiver.SpeakerPresetCount}");
+
 var levels = await receiver.GetSpeakerPresetLevelsAsync();
 await receiver.SetSpeakerPresetLevelAsync(speakerIndex: 2, decibels: -3.5);
+
+var snapshot = await receiver.CreateSpeakerLevelSnapshotAsync();
+// ... temporary persistent-level changes ...
+await receiver.RestoreSpeakerLevelSnapshotAsync(snapshot);
 ```
 
-`SpeakerIndex` is the web-interface index provided by the receiver. The sample menu item `L → 1` shows current values together with their indices; `L → H` sets a value. The test tone is not implemented yet: only the web-interface stop command is confirmed, not an unambiguous start command.
+`SpeakerPresetCount` comes from the selected receiver profile. The X6800H and X6700H profiles currently report two presets; legacy and unknown profiles report zero. `SpeakerIndex` is the web-interface index provided by the receiver. The sample menu item `L → 1` shows current values together with their indices; `L → H` sets a value.
+
+The same X6800H setup interface can read and write persistent speaker distances:
+
+```csharp
+var distances = await receiver.GetSpeakerDistancesAsync();
+Console.WriteLine($"Receiver unit: {distances.ReceiverUnit}, step: {distances.Step:0.###} m");
+
+foreach (var speaker in distances.Speakers)
+    Console.WriteLine($"{speaker.Channel}: {speaker.Meters:0.###} m");
+
+await receiver.SetSpeakerDistanceAsync(speakerIndex: 0, meters: 3.25);
+```
+
+Public distance values are always expressed in meters. If the receiver UI is configured for feet, the profile converts the values when reading and writing. The test tone is not implemented yet: only the web-interface stop command is confirmed, not an unambiguous start command.
 
 ### Feature and device capabilities
 
@@ -290,7 +313,7 @@ Further details are available in the [API documentation](docs/API.md), [protocol
 - Renamed inputs are not yet mapped separately to their custom display names.
 - Events are received through a permanently open Telnet connection; custom event handlers should not perform long-running work.
 - Receiver-specific web features use an internal profile selected during `InitializeAsync()`. The selected profile is exposed as `ReceiverProfileId` for diagnostics.
-- Speaker-preset levels are currently implemented for the AVC-X6800H AJAX API only. The AVC-X6700H and legacy profiles intentionally report this feature as unsupported until their exact web requests and responses have been captured and implemented in dedicated providers.
+- Speaker-preset levels and speaker distances are currently implemented for the AVC-X6800H AJAX API only. The AVC-X6700H profile knows that the receiver has two speaker presets, but its model-specific level/distance web API is intentionally unsupported until the exact requests and responses have been captured. Legacy and unknown profiles currently report zero known presets and no web speaker-setup support.
 
 ## Reference and license
 

@@ -41,6 +41,14 @@ Run control tests deliberately and one at a time. Before powering off, the sampl
 | Mute | Options `7`, `8` | Mute status changes |
 | Audio format | Play a source with an active signal | Format and sound mode are plausible |
 | Speakers | Play multichannel material | Active channels match playback |
+| Speaker-preset levels | On an X6800H, open `L → 1` | Persistent Setup → Speakers → Levels values and indices are plausible |
+| Speaker-preset write | On an X6800H, use `L → H` on a known channel and restore it afterwards | Setup value changes by the requested amount |
+
+### Receiver-profile speaker setup
+
+For X6800H-specific speaker setup tests, also verify `ReceiverProfileId == "avc-x6800h"` and `SpeakerPresetCount == 2`. Programmatic distance tests can use `GetSpeakerDistancesAsync()` and `SetSpeakerDistanceAsync()`. Read values are always returned in meters even if the receiver UI is set to feet; after a write, reread the value and restore the original distance.
+
+Snapshot tests should capture the current persistent levels with `CreateSpeakerLevelSnapshotAsync()`, make only a deliberate temporary level change, and restore the captured snapshot before finishing. Do not run destructive write tests unattended.
 
 ## Recording an error
 
