@@ -17,6 +17,7 @@ public enum AvrFeature
     ChannelLevelRead,
     ChannelLevelControl,
     SpeakerPresetLevelControl,
+    SpeakerDistanceControl,
     AudioInformation,
     ActiveSpeakerStatus,
     SpeakerPresetControl,

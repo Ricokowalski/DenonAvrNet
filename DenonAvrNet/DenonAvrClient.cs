@@ -26,6 +26,7 @@ public sealed class DenonAvrClient : IDisposable
         new HashSet<DenonControlProtocol> { DenonControlProtocol.Telnet };
     private IReadOnlyList<string>? _availableInputs;
     private IDenonReceiverProfile? _receiverProfile;
+    private DenonSpeakerLevelSnapshot? _speakerLevelSnapshot;
     private bool _requiresSequentialAppCommandRequests;
     private bool _disposed;
 
@@ -78,6 +79,13 @@ public sealed class DenonAvrClient : IDisposable
     /// </summary>
     public string? ReceiverProfileId => _receiverProfile?.Id;
 
+    /// <summary>
+    /// Gets the number of speaker presets known for the selected receiver profile.
+    /// A value of zero means that the profile does not expose speaker presets.
+    /// </summary>
+    public int SpeakerPresetCount =>
+        GetReceiverProfile().SpeakerPresetCount;
+
     /// <summary>Gets the most recently confirmed receiver state.</summary>
     public DenonReceiverState? State { get; private set; }
 
@@ -107,6 +115,7 @@ public sealed class DenonAvrClient : IDisposable
                 ReceiverCapabilities = CreateReceiverCapabilities(deviceInfo, port);
                 State = null;
                 _availableInputs = null;
+                _speakerLevelSnapshot = null;
                 _requiresSequentialAppCommandRequests = false;
                 return deviceInfo;
             }
@@ -207,7 +216,8 @@ public sealed class DenonAvrClient : IDisposable
         AvrFeature.MainZoneStatus or
         AvrFeature.AudioInformation or
         AvrFeature.ActiveSpeakerStatus or
-        AvrFeature.SpeakerPresetLevelControl => HttpOnly,
+        AvrFeature.SpeakerPresetLevelControl or
+        AvrFeature.SpeakerDistanceControl => HttpOnly,
         AvrFeature.Zone2Control or
         AvrFeature.Zone3Control or
         AvrFeature.LiveEvents or
@@ -237,6 +247,10 @@ public sealed class DenonAvrClient : IDisposable
             AvrFeature.Zone3Control => capabilities.SupportsZone3,
             AvrFeature.AudioInformation or AvrFeature.ActiveSpeakerStatus =>
                 capabilities.SupportsAppCommand0300 == true,
+            AvrFeature.SpeakerPresetLevelControl =>
+                GetReceiverProfile().SupportsSpeakerPresetLevels,
+            AvrFeature.SpeakerDistanceControl =>
+                GetReceiverProfile().SupportsSpeakerDistances,
             AvrFeature.MainZonePower or
             AvrFeature.MainZoneVolume or
             AvrFeature.MainZoneMute or
@@ -630,6 +644,141 @@ public sealed class DenonAvrClient : IDisposable
         GetReceiverProfile().SpeakerPresetLevels.GetLevelsAsync(
             new DenonProfileContext(Host, _httpTransport),
             cancellationToken);
+
+    /// <summary>
+    /// Captures the current persistent speaker-preset levels and returns an immutable snapshot.
+    /// </summary>
+    public async Task<DenonSpeakerLevelSnapshot> CreateSpeakerLevelSnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var profile = GetReceiverProfile();
+
+        var levels = await profile.SpeakerPresetLevels
+            .GetLevelsAsync(
+                new DenonProfileContext(
+                    Host,
+                    _httpTransport),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return new DenonSpeakerLevelSnapshot(
+            DateTimeOffset.UtcNow,
+            profile.Id,
+            levels.ToArray());
+    }
+
+    /// <summary>
+    /// Captures the current persistent speaker-preset levels in the client's convenience snapshot slot.
+    /// </summary>
+    public async Task SaveSpeakerLevelSnapshotAsync(
+        CancellationToken cancellationToken = default) =>
+        _speakerLevelSnapshot =
+            await CreateSpeakerLevelSnapshotAsync(
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <summary>
+    /// Restores every level stored in a previously captured speaker-level snapshot.
+    /// </summary>
+    public async Task RestoreSpeakerLevelSnapshotAsync(
+        DenonSpeakerLevelSnapshot snapshot,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        var profile = GetReceiverProfile();
+
+        if (!string.Equals(
+            snapshot.ReceiverProfileId,
+            profile.Id,
+            StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Der Snapshot wurde fuer Receiver-Profil '{snapshot.ReceiverProfileId}' erstellt, " +
+                $"der aktuelle Receiver verwendet aber '{profile.Id}'.");
+        }
+
+        var context =
+            new DenonProfileContext(
+                Host,
+                _httpTransport);
+
+        foreach (var level in snapshot.Levels)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await profile.SpeakerPresetLevels
+                .SetLevelAsync(
+                    context,
+                    level.SpeakerIndex,
+                    level.Decibels,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Restores the snapshot previously stored with <see cref="SaveSpeakerLevelSnapshotAsync"/>.
+    /// </summary>
+    public Task RestoreSpeakerLevelSnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var snapshot =
+            _speakerLevelSnapshot
+            ?? throw new InvalidOperationException(
+                "Es wurde noch kein Speaker-Level-Snapshot gespeichert.");
+
+        return RestoreSpeakerLevelSnapshotAsync(
+            snapshot,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the persistent speaker distances of the active speaker preset.
+    /// Returned values are always in meters.
+    /// </summary>
+    public Task<DenonSpeakerDistanceConfiguration> GetSpeakerDistancesAsync(
+        CancellationToken cancellationToken = default) =>
+        GetReceiverProfile()
+            .SpeakerDistances
+            .GetDistancesAsync(
+                new DenonProfileContext(
+                    Host,
+                    _httpTransport),
+                cancellationToken);
+
+    /// <summary>
+    /// Sets one persistent speaker distance in meters using the receiver-specific speaker setup API.
+    /// </summary>
+    public Task SetSpeakerDistanceAsync(
+        int speakerIndex,
+        double meters,
+        CancellationToken cancellationToken = default)
+    {
+        if (speakerIndex < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(speakerIndex));
+        }
+
+        if (!double.IsFinite(meters) ||
+            meters <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(meters),
+                "Die Distanz muss groesser als 0 Meter sein.");
+        }
+
+        return GetReceiverProfile()
+            .SpeakerDistances
+            .SetDistanceAsync(
+                new DenonProfileContext(
+                    Host,
+                    _httpTransport),
+                speakerIndex,
+                meters,
+                cancellationToken);
+    }
 
     /// <summary>Sends a complete Denon HTTP command path.</summary>
     /// <param name="commandPath">Path beginning with <c>/</c>, including any query command.</param>
