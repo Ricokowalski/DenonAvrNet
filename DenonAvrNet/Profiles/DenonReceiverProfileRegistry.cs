@@ -58,37 +58,31 @@ internal sealed class AvcX6800hProfile : IDenonReceiverProfile
     public bool SupportsSpeakerPresetSelection => true;
 
     public ISpeakerPresetLevelProvider SpeakerPresetLevels { get; } =
-        new AjaxSpeakerPresetLevelProvider();
+        new AjaxSpeakerPresetLevelProvider(DenonSpeakerAjaxOptions.AvcX6800H);
 
     public ISpeakerDistanceProvider SpeakerDistances { get; } =
-        new AjaxSpeakerDistanceProvider();
+        new AjaxSpeakerDistanceProvider(DenonSpeakerAjaxOptions.AvcX6800H);
 
     public ISpeakerPresetSelectionProvider SpeakerPresetSelection { get; } =
-        new AjaxSpeakerPresetSelectionProvider();
+        new AjaxSpeakerPresetSelectionProvider(DenonSpeakerAjaxOptions.AvcX6800H);
 }
 
 internal sealed class AvcX6700hProfile : IDenonReceiverProfile
 {
     public string Id => "avc-x6700h";
     public int SpeakerPresetCount => 2;
-    public bool SupportsSpeakerPresetLevels => false;
-    public bool SupportsSpeakerDistances => false;
-    public bool SupportsSpeakerPresetSelection => false;
+    public bool SupportsSpeakerPresetLevels => true;
+    public bool SupportsSpeakerDistances => true;
+    public bool SupportsSpeakerPresetSelection => true;
 
-    // The X6700H's speaker setup UI/API is different from the X6800H's.
-    // Add its captured request/response implementation here; keeping this
-    // provider separate prevents accidental use of the X6800H endpoint.
     public ISpeakerPresetLevelProvider SpeakerPresetLevels { get; } =
-        new UnsupportedSpeakerPresetLevelProvider(
-            "AVC-X6700H");
+        new AjaxSpeakerPresetLevelProvider(DenonSpeakerAjaxOptions.AvcX6700H);
 
     public ISpeakerDistanceProvider SpeakerDistances { get; } =
-        new UnsupportedSpeakerDistanceProvider(
-            "AVC-X6700H");
+        new AjaxSpeakerDistanceProvider(DenonSpeakerAjaxOptions.AvcX6700H);
 
     public ISpeakerPresetSelectionProvider SpeakerPresetSelection { get; } =
-        new UnsupportedSpeakerPresetSelectionProvider(
-            "AVC-X6700H");
+        new AjaxSpeakerPresetSelectionProvider(DenonSpeakerAjaxOptions.AvcX6700H);
 }
 
 internal sealed class LegacyReceiverProfile : IDenonReceiverProfile

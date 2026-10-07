@@ -1,14 +1,15 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Xml.Linq;
 using DenonAvrNet.Models;
 using DenonAvrNet.Protocol;
 
 namespace DenonAvrNet.Profiles;
 
-/// <summary>Speaker-preset API used by the AVC-X6800H web interface.</summary>
-internal sealed class AjaxSpeakerPresetLevelProvider : ISpeakerPresetLevelProvider
+/// <summary>AJAX speaker-level API shared by supported Denon receiver profiles.</summary>
+internal sealed class AjaxSpeakerPresetLevelProvider(
+    DenonSpeakerAjaxOptions options)
+    : ISpeakerPresetLevelProvider
 {
-    private const int SpeakerSetupHttpPort = 11080;
 
     public async Task<IReadOnlyList<DenonSpeakerPresetLevel>> GetLevelsAsync(
         DenonProfileContext context,
@@ -16,8 +17,10 @@ internal sealed class AjaxSpeakerPresetLevelProvider : ISpeakerPresetLevelProvid
     {
         var response = await context.HttpTransport.GetStringAsync(
             context.Host,
-            SpeakerSetupHttpPort,
+            options.Scheme,
+            options.Port,
             DenonEndpoints.SpeakerPresetLevels(),
+            options.AllowUntrustedServerCertificate,
             cancellationToken).ConfigureAwait(false);
 
         var document = XDocument.Parse(response);
@@ -45,8 +48,14 @@ internal sealed class AjaxSpeakerPresetLevelProvider : ISpeakerPresetLevelProvid
         var tenthsOfDecibels = (int)Math.Round(decibels * 10, MidpointRounding.AwayFromZero);
         _ = await context.HttpTransport.GetStringAsync(
             context.Host,
-            SpeakerSetupHttpPort,
-            DenonEndpoints.SetSpeakerPresetLevel(speakerIndex, tenthsOfDecibels),
+            options.Scheme,
+            options.Port,
+            DenonEndpoints.SetSpeakerPresetLevel(
+                speakerIndex,
+                tenthsOfDecibels,
+                options.SpeakerLevelSetType,
+                options.WrapSpeakerLevelInList),
+            options.AllowUntrustedServerCertificate,
             cancellationToken).ConfigureAwait(false);
     }
 }

@@ -5,10 +5,11 @@ using DenonAvrNet.Protocol;
 
 namespace DenonAvrNet.Profiles;
 
-/// <summary>Speaker-distance API used by the AVC-X6800H web interface.</summary>
-internal sealed class AjaxSpeakerDistanceProvider : ISpeakerDistanceProvider
+/// <summary>AJAX speaker-distance API shared by supported Denon receiver profiles.</summary>
+internal sealed class AjaxSpeakerDistanceProvider(
+    DenonSpeakerAjaxOptions options)
+    : ISpeakerDistanceProvider
 {
-    private const int SpeakerSetupHttpPort = 11080;
 
     public async Task<DenonSpeakerDistanceConfiguration> GetDistancesAsync(
         DenonProfileContext context,
@@ -16,8 +17,10 @@ internal sealed class AjaxSpeakerDistanceProvider : ISpeakerDistanceProvider
     {
         var response = await context.HttpTransport.GetStringAsync(
             context.Host,
-            SpeakerSetupHttpPort,
+            options.Scheme,
+            options.Port,
             DenonEndpoints.SpeakerDistances(),
+            options.AllowUntrustedServerCertificate,
             cancellationToken).ConfigureAwait(false);
 
         var document = XDocument.Parse(response);
@@ -84,10 +87,12 @@ internal sealed class AjaxSpeakerDistanceProvider : ISpeakerDistanceProvider
 
         _ = await context.HttpTransport.GetStringAsync(
             context.Host,
-            SpeakerSetupHttpPort,
+            options.Scheme,
+            options.Port,
             DenonEndpoints.SetSpeakerDistance(
                 speakerIndex,
                 rawValue),
+            options.AllowUntrustedServerCertificate,
             cancellationToken).ConfigureAwait(false);
     }
 

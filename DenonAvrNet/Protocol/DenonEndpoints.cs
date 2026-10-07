@@ -91,13 +91,19 @@ internal static class DenonEndpoints
 
     internal static string SetSpeakerPresetLevel(
         int speakerIndex,
-        int tenthsOfDecibels)
+        int tenthsOfDecibels,
+        int configType,
+        bool wrapInList)
     {
-        var data =
+        var speaker =
             $"<Speaker index=\"{speakerIndex}\">{tenthsOfDecibels}</Speaker>";
 
+        var data = wrapInList
+            ? $"<List>{speaker}</List>"
+            : speaker;
+
         return
-            $"/ajax/speakers/set_config?type=20&data={Uri.EscapeDataString(data)}&_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            $"/ajax/speakers/set_config?type={configType}&data={Uri.EscapeDataString(data)}&_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
     }
 
     internal static string SetSpeakerDistance(

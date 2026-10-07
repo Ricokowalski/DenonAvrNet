@@ -6,11 +6,11 @@ using DenonAvrNet.Protocol;
 
 namespace DenonAvrNet.Profiles;
 
-/// <summary>Speaker-preset selection API used by the AVC-X6800H web interface.</summary>
-internal sealed class AjaxSpeakerPresetSelectionProvider : ISpeakerPresetSelectionProvider
+/// <summary>AJAX speaker-preset selection API shared by supported Denon receiver profiles.</summary>
+internal sealed class AjaxSpeakerPresetSelectionProvider(
+    DenonSpeakerAjaxOptions options)
+    : ISpeakerPresetSelectionProvider
 {
-    private const int SpeakerSetupHttpPort = 11080;
-
     private static readonly TimeSpan ConfirmationPollInterval = TimeSpan.FromSeconds(1);
 
     public async Task<int> GetActivePresetAsync(
@@ -19,8 +19,10 @@ internal sealed class AjaxSpeakerPresetSelectionProvider : ISpeakerPresetSelecti
     {
         var response = await context.HttpTransport.GetStringAsync(
             context.Host,
-            SpeakerSetupHttpPort,
+            options.Scheme,
+            options.Port,
             DenonEndpoints.SpeakerPreset(),
+            options.AllowUntrustedServerCertificate,
             cancellationToken).ConfigureAwait(false);
 
         return ParseActivePreset(response);
@@ -37,8 +39,10 @@ internal sealed class AjaxSpeakerPresetSelectionProvider : ISpeakerPresetSelecti
         {
             _ = await context.HttpTransport.GetStringAsync(
                 context.Host,
-                SpeakerSetupHttpPort,
+                options.Scheme,
+                options.Port,
                 DenonEndpoints.SetSpeakerPreset(preset),
+                options.AllowUntrustedServerCertificate,
                 cancellationToken).ConfigureAwait(false);
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -53,21 +57,26 @@ internal sealed class AjaxSpeakerPresetSelectionProvider : ISpeakerPresetSelecti
             confirmationTimeout,
             cancellationToken).ConfigureAwait(false);
 
-        try
+        if (options.StopTestToneAfterPresetSelection)
         {
-            _ = await context.HttpTransport.GetStringAsync(
-                context.Host,
-                SpeakerSetupHttpPort,
-                DenonEndpoints.StopTestTone(),
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
-                                          exception is HttpRequestException or TaskCanceledException)
-        {
-            throw new DenonProtocolException(
-                $"Speaker Preset {preset} ist aktiv, aber der Testton konnte nicht gestoppt werden.",
-                exception);
-            // <-----------
+            try
+            {
+                _ = await context.HttpTransport.GetStringAsync(
+                    context.Host,
+                    options.Scheme,
+                    options.Port,
+                    DenonEndpoints.StopTestTone(),
+                    options.AllowUntrustedServerCertificate,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
+                                              exception is HttpRequestException or TaskCanceledException)
+            {
+                throw new DenonProtocolException(
+                    $"Speaker Preset {preset} ist aktiv, aber der Testton konnte nicht gestoppt werden.",
+                    exception);
+                // <-----------
+            }
         }
     }
 

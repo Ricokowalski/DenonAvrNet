@@ -17,4 +17,20 @@ public sealed class DenonReceiverProfileRegistryTests
 
         Assert.Equal(expectedProfileId, profile.Id);
     }
+    [Fact]
+    public void Select_X6700H_EnablesCapturedSpeakerFeatures()
+    {
+        var deviceInfo = new DenonDeviceInfo("AVC-X6700H", null, null, null, null, null);
+
+        var profile = DenonReceiverProfileRegistry.Select(deviceInfo, 8080);
+
+        Assert.Equal(2, profile.SpeakerPresetCount);
+        Assert.True(profile.SupportsSpeakerPresetLevels);
+        Assert.True(profile.SupportsSpeakerDistances);
+        Assert.True(profile.SupportsSpeakerPresetSelection);
+        Assert.IsType<AjaxSpeakerPresetLevelProvider>(profile.SpeakerPresetLevels);
+        Assert.IsType<AjaxSpeakerDistanceProvider>(profile.SpeakerDistances);
+        Assert.IsType<AjaxSpeakerPresetSelectionProvider>(profile.SpeakerPresetSelection);
+    }
+
 }
