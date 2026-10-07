@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Net.Sockets;
 using DenonAvrNet.Exceptions;
 using DenonAvrNet.Models;
@@ -14,10 +14,16 @@ public sealed class DenonAvrClient : IDisposable
     /// <summary>Highest absolute speaker-preset level in dB. Accepted range is +/- this value.</summary>
     public const double SpeakerLevelLimitDecibels = 12.0;
 
-    /// <summary>Lowest Main Zone volume in dB that <see cref="SetVolumeAsync(double, CancellationToken)"/> accepts.</summary>
+    /// <summary>Lowest value on Denon's absolute 0..98 volume scale.</summary>
+    public const double MinVolume = DenonVolumeCodec.MinVolume;
+
+    /// <summary>Highest value on Denon's absolute 0..98 volume scale.</summary>
+    public const double MaxVolume = DenonVolumeCodec.MaxVolume;
+
+    /// <summary>Lowest supported relative volume in dB.</summary>
     public const double MinVolumeDecibels = DenonVolumeCodec.MinDecibels;
 
-    /// <summary>Highest Main Zone volume in dB that <see cref="SetVolumeAsync(double, CancellationToken)"/> accepts.</summary>
+    /// <summary>Highest supported relative volume in dB.</summary>
     public const double MaxVolumeDecibels = DenonVolumeCodec.MaxDecibels;
     private readonly DenonHttpTransport _httpTransport;
     private readonly DenonTelnetClient _telnetClient;
@@ -482,36 +488,34 @@ public sealed class DenonAvrClient : IDisposable
             token => _telnetClient.VolumeDownAsync(token),
             cancellationToken);
 
-    /// <summary>Sets the Main Zone volume, rounded to a half-decibel step.</summary>
-    /// <param name="volumeDb">Volume from -80.0 through +18.0 dB.</param>
-    /// <param name="cancellationToken">Token used to cancel the operation.</param>
-    public Task SetVolumeAsync(double volumeDb, CancellationToken cancellationToken = default) =>
-        SetVolumeAsync(volumeDb, PreferredControlProtocol, cancellationToken);
+    /// <summary>Sets the Main Zone volume on Denon's absolute 0..98 scale.</summary>
+    public Task SetVolumeAsync(double volume, CancellationToken cancellationToken = default) =>
+        SetVolumeAsync(volume, PreferredControlProtocol, cancellationToken);
 
-    /// <summary>Sets Main Zone volume through the selected transport, rounded to a half-decibel step.</summary>
+    /// <summary>Sets Main Zone volume on Denon's absolute 0..98 scale through the selected transport.</summary>
     public Task SetVolumeAsync(
-            double volumeDb,
-            DenonControlProtocol protocol,
-            CancellationToken cancellationToken = default)
+        double volume,
+        DenonControlProtocol protocol,
+        CancellationToken cancellationToken = default)
     {
-        if (volumeDb is < MinVolumeDecibels or > MaxVolumeDecibels)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(volumeDb),
-                volumeDb,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"The volume must be between {MinVolumeDecibels:+0.0;-0.0} and {MaxVolumeDecibels:+0.0;-0.0} dB."));
-            // <-----------
-        }
-
-        var normalizedVolume = DenonVolumeCodec.NormalizeDecibels(volumeDb);
-        var value = DenonVolumeCodec.ToHttpValue(normalizedVolume);
+        var normalizedVolume = DenonVolumeCodec.NormalizeVolume(volume);
+        var httpValue = DenonVolumeCodec.ToHttpValue(normalizedVolume);
         return ExecuteControlAsync(AvrFeature.MainZoneVolume, protocol,
-            token => SendHttpCommandAsync(DenonEndpoints.SetVolume(value), token),
+            token => SendHttpCommandAsync(DenonEndpoints.SetVolume(httpValue), token),
             token => _telnetClient.SetVolumeAsync(normalizedVolume, token),
             cancellationToken);
     }
+
+    /// <summary>Sets the Main Zone volume using the relative dB scale.</summary>
+    public Task SetVolumeDbAsync(double volumeDb, CancellationToken cancellationToken = default) =>
+        SetVolumeDbAsync(volumeDb, PreferredControlProtocol, cancellationToken);
+
+    /// <summary>Sets the Main Zone volume in dB through the selected transport.</summary>
+    public Task SetVolumeDbAsync(
+        double volumeDb,
+        DenonControlProtocol protocol,
+        CancellationToken cancellationToken = default) =>
+        SetVolumeAsync(DenonVolumeCodec.FromDecibels(volumeDb), protocol, cancellationToken);
 
     /// <summary>Raises Zone 2 volume by one receiver step using <see cref="PreferredControlProtocol"/>.</summary>
     public Task Zone2VolumeUpAsync(CancellationToken cancellationToken = default) =>
@@ -535,23 +539,29 @@ public sealed class DenonAvrClient : IDisposable
             token => _telnetClient.ChangeZone2VolumeAsync(false, token),
             cancellationToken);
 
-    /// <summary>Sets Zone 2 volume in dB using the same scale as Main Zone.</summary>
-    public Task SetZone2VolumeAsync(double volumeDb, CancellationToken cancellationToken = default) =>
-        SetZone2VolumeAsync(volumeDb, PreferredControlProtocol, cancellationToken);
+    /// <summary>Sets Zone 2 volume on Denon's absolute 0..98 scale.</summary>
+    public Task SetZone2VolumeAsync(double volume, CancellationToken cancellationToken = default) =>
+        SetZone2VolumeAsync(volume, PreferredControlProtocol, cancellationToken);
 
-    /// <summary>Sets Zone 2 volume in dB through the selected transport.</summary>
+    /// <summary>Sets Zone 2 volume on Denon's absolute 0..98 scale through the selected transport.</summary>
     public Task SetZone2VolumeAsync(
-        double volumeDb,
-        DenonControlProtocol protocol,
-        CancellationToken cancellationToken = default)
+        double volume, DenonControlProtocol protocol, CancellationToken cancellationToken = default)
     {
-        var normalizedVolume = DenonVolumeCodec.NormalizeDecibels(volumeDb);
-        var value = DenonVolumeCodec.ToHttpValue(normalizedVolume);
+        var normalizedVolume = DenonVolumeCodec.NormalizeVolume(volume);
+        var httpValue = DenonVolumeCodec.ToHttpValue(normalizedVolume);
         return ExecuteControlAsync(AvrFeature.Zone2Control, protocol,
-            token => SendHttpCommandAsync(DenonEndpoints.SetZoneVolume(2, value), token),
+            token => SendHttpCommandAsync(DenonEndpoints.SetZoneVolume(2, httpValue), token),
             token => _telnetClient.SetZone2VolumeAsync(normalizedVolume, token),
             cancellationToken);
     }
+
+    /// <summary>Sets Zone 2 volume using the relative dB scale.</summary>
+    public Task SetZone2VolumeDbAsync(double volumeDb, CancellationToken cancellationToken = default) =>
+        SetZone2VolumeDbAsync(volumeDb, PreferredControlProtocol, cancellationToken);
+
+    public Task SetZone2VolumeDbAsync(
+        double volumeDb, DenonControlProtocol protocol, CancellationToken cancellationToken = default) =>
+        SetZone2VolumeAsync(DenonVolumeCodec.FromDecibels(volumeDb), protocol, cancellationToken);
 
     /// <summary>Sets Zone 2 muting. Mute is kept separate from the volume value.</summary>
     public Task SetZone2MuteAsync(bool muted, CancellationToken cancellationToken = default) =>
@@ -589,23 +599,29 @@ public sealed class DenonAvrClient : IDisposable
             token => _telnetClient.ChangeZone3VolumeAsync(false, token),
             cancellationToken);
 
-    /// <summary>Sets Zone 3 volume in dB using the same scale as Main Zone.</summary>
-    public Task SetZone3VolumeAsync(double volumeDb, CancellationToken cancellationToken = default) =>
-        SetZone3VolumeAsync(volumeDb, PreferredControlProtocol, cancellationToken);
+    /// <summary>Sets Zone 3 volume on Denon's absolute 0..98 scale.</summary>
+    public Task SetZone3VolumeAsync(double volume, CancellationToken cancellationToken = default) =>
+        SetZone3VolumeAsync(volume, PreferredControlProtocol, cancellationToken);
 
-    /// <summary>Sets Zone 3 volume in dB through the selected transport.</summary>
+    /// <summary>Sets Zone 3 volume on Denon's absolute 0..98 scale through the selected transport.</summary>
     public Task SetZone3VolumeAsync(
-        double volumeDb,
-        DenonControlProtocol protocol,
-        CancellationToken cancellationToken = default)
+        double volume, DenonControlProtocol protocol, CancellationToken cancellationToken = default)
     {
-        var normalizedVolume = DenonVolumeCodec.NormalizeDecibels(volumeDb);
-        var value = DenonVolumeCodec.ToHttpValue(normalizedVolume);
+        var normalizedVolume = DenonVolumeCodec.NormalizeVolume(volume);
+        var httpValue = DenonVolumeCodec.ToHttpValue(normalizedVolume);
         return ExecuteControlAsync(AvrFeature.Zone3Control, protocol,
-            token => SendHttpCommandAsync(DenonEndpoints.SetZoneVolume(3, value), token),
+            token => SendHttpCommandAsync(DenonEndpoints.SetZoneVolume(3, httpValue), token),
             token => _telnetClient.SetZone3VolumeAsync(normalizedVolume, token),
             cancellationToken);
     }
+
+    /// <summary>Sets Zone 3 volume using the relative dB scale.</summary>
+    public Task SetZone3VolumeDbAsync(double volumeDb, CancellationToken cancellationToken = default) =>
+        SetZone3VolumeDbAsync(volumeDb, PreferredControlProtocol, cancellationToken);
+
+    public Task SetZone3VolumeDbAsync(
+        double volumeDb, DenonControlProtocol protocol, CancellationToken cancellationToken = default) =>
+        SetZone3VolumeAsync(DenonVolumeCodec.FromDecibels(volumeDb), protocol, cancellationToken);
 
     /// <summary>Sets Zone 3 muting. Mute is kept separate from the volume value.</summary>
     public Task SetZone3MuteAsync(bool muted, CancellationToken cancellationToken = default) =>

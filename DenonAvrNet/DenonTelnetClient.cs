@@ -1,4 +1,4 @@
-﻿using DenonAvrNet.Exceptions;
+using DenonAvrNet.Exceptions;
 using DenonAvrNet.Logger;
 using DenonAvrNet.Models;
 using DenonAvrNet.Profiles;
@@ -155,9 +155,9 @@ public sealed class DenonTelnetClient
     public Task<string> VolumeDownAsync(CancellationToken cancellationToken = default) =>
         SendCommandAsync("MVDOWN", cancellationToken);
 
-    /// <summary>Sets Main Zone volume from -80.0 through +18.0 dB.</summary>
-    public Task<string> SetVolumeAsync(double volumeDb, CancellationToken cancellationToken = default) =>
-        SendCommandAsync($"MV{ToTelnetVolumeValue(volumeDb)}", cancellationToken);
+    /// <summary>Sets Main Zone volume on Denon's absolute 0..98 scale.</summary>
+    public Task<string> SetVolumeAsync(double volume, CancellationToken cancellationToken = default) =>
+        SendCommandAsync($"MV{ToTelnetVolumeValue(volume)}", cancellationToken);
 
     /// <summary>Enables or disables Main Zone muting.</summary>
     public Task<string> SetMuteAsync(bool muted, CancellationToken cancellationToken = default) =>
@@ -191,13 +191,13 @@ public sealed class DenonTelnetClient
     public Task<string> ChangeZone3VolumeAsync(bool increase, CancellationToken cancellationToken = default) =>
         SendCommandAsync(increase ? "Z3UP" : "Z3DOWN", cancellationToken);
 
-    /// <summary>Sets Zone 2 volume from -80.0 through +18.0 dB.</summary>
-    public Task<string> SetZone2VolumeAsync(double volumeDb, CancellationToken cancellationToken = default) =>
-        SendCommandAsync($"Z2{ToTelnetVolumeValue(volumeDb)}", cancellationToken);
+    /// <summary>Sets Zone 2 volume on Denon's absolute 0..98 scale.</summary>
+    public Task<string> SetZone2VolumeAsync(double volume, CancellationToken cancellationToken = default) =>
+        SendCommandAsync($"Z2{ToTelnetVolumeValue(volume)}", cancellationToken);
 
-    /// <summary>Sets Zone 3 volume from -80.0 through +18.0 dB.</summary>
-    public Task<string> SetZone3VolumeAsync(double volumeDb, CancellationToken cancellationToken = default) =>
-        SendCommandAsync($"Z3{ToTelnetVolumeValue(volumeDb)}", cancellationToken);
+    /// <summary>Sets Zone 3 volume on Denon's absolute 0..98 scale.</summary>
+    public Task<string> SetZone3VolumeAsync(double volume, CancellationToken cancellationToken = default) =>
+        SendCommandAsync($"Z3{ToTelnetVolumeValue(volume)}", cancellationToken);
 
     /// <summary>Enables or disables Zone 2 muting.</summary>
     public Task<string> SetZone2MuteAsync(bool muted, CancellationToken cancellationToken = default) =>
@@ -354,8 +354,8 @@ public sealed class DenonTelnetClient
         return SendCommandAsync($"{zonePrefix}{protocolName}", cancellationToken);
     }
 
-    private static string ToTelnetVolumeValue(double volumeDb) =>
-        DenonVolumeCodec.ToTelnetValue(volumeDb);
+    private static string ToTelnetVolumeValue(double volume) =>
+        DenonVolumeCodec.ToTelnetValue(volume);
 
     private async Task<IReadOnlyList<string>> SendCommandUntilAsync(
     string command,

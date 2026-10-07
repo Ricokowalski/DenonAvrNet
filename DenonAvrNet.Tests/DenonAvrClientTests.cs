@@ -239,8 +239,8 @@ public sealed class DenonAvrClientTests
     }
 
     [Theory]
-    [InlineData(-80.1)]
-    [InlineData(18.1)]
+    [InlineData(-0.1)]
+    [InlineData(98.1)]
     public async Task SetVolumeAsync_RejectsOutOfRangeValue(double volume)
     {
         var handler = CreateInitializedReceiverHandler();
@@ -252,14 +252,29 @@ public sealed class DenonAvrClientTests
     }
 
     [Fact]
-    public async Task SetVolumeAsync_RoundsToHalfDecibelAndUsesInvariantFormat()
+    public async Task SetVolumeAsync_UsesAbsoluteScaleAndConvertsHttpToDb()
     {
         var handler = CreateInitializedReceiverHandler();
         using var transport = new DenonHttpTransport(handler, TimeSpan.FromSeconds(1));
         using var client = new DenonAvrClient("10.37.0.190", transport);
         await client.InitializeAsync();
 
-        await client.SetVolumeAsync(-35.26);
+        await client.SetVolumeAsync(44.74);
+
+        Assert.Equal(
+            "/goform/formiPhoneAppVolume.xml?1+-35.5",
+            handler.RequestedUris[^1].PathAndQuery);
+    }
+
+    [Fact]
+    public async Task SetVolumeDbAsync_KeepsExplicitDbApi()
+    {
+        var handler = CreateInitializedReceiverHandler();
+        using var transport = new DenonHttpTransport(handler, TimeSpan.FromSeconds(1));
+        using var client = new DenonAvrClient("10.37.0.190", transport);
+        await client.InitializeAsync();
+
+        await client.SetVolumeDbAsync(-35.5, DenonControlProtocol.Http);
 
         Assert.Equal(
             "/goform/formiPhoneAppVolume.xml?1+-35.5",
@@ -267,11 +282,11 @@ public sealed class DenonAvrClientTests
     }
 
     [Theory]
-    [InlineData(2, -35.26, "/goform/formiPhoneAppVolume.xml?2+-35.5")]
-    [InlineData(3, 0.0, "/goform/formiPhoneAppVolume.xml?3+0.0")]
-    public async Task SetAdditionalZoneVolumeAsync_UsesSameDbScaleAsMainZone(
+    [InlineData(2, 44.74, "/goform/formiPhoneAppVolume.xml?2+-35.5")]
+    [InlineData(3, 80.0, "/goform/formiPhoneAppVolume.xml?3+0.0")]
+    public async Task SetAdditionalZoneVolumeAsync_UsesSameAbsoluteScaleAsMainZone(
         int zone,
-        double volumeDb,
+        double volume,
         string expectedPathAndQuery)
     {
         var handler = CreateInitializedReceiverHandler();
@@ -281,11 +296,11 @@ public sealed class DenonAvrClientTests
 
         if (zone == 2)
         {
-            await client.SetZone2VolumeAsync(volumeDb, DenonControlProtocol.Http);
+            await client.SetZone2VolumeAsync(volume, DenonControlProtocol.Http);
         }
         else
         {
-            await client.SetZone3VolumeAsync(volumeDb, DenonControlProtocol.Http);
+            await client.SetZone3VolumeAsync(volume, DenonControlProtocol.Http);
         }
 
         Assert.Equal(expectedPathAndQuery, handler.RequestedUris[^1].PathAndQuery);

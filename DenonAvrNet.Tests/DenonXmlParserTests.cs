@@ -28,6 +28,7 @@ public sealed class DenonXmlParserTests
         Assert.Equal("ON", result.Power);
         Assert.Equal("Media Player", result.Input);
         Assert.Equal(-35.5, result.VolumeDb);
+        Assert.Equal(44.5, result.Volume);
         Assert.False(result.IsMuted);
         Assert.Equal(
             new[] { "CBL/SAT", "Media Player", "TV AUDIO", "PHONO" },
@@ -52,10 +53,12 @@ public sealed class DenonXmlParserTests
         Assert.NotNull(result.Zone2);
         Assert.Equal("OFF", result.Zone2.Power);
         Assert.Equal(-40, result.Zone2.VolumeDb);
+        Assert.Equal(40.0, result.Zone2.Volume);
         Assert.Equal("SOURCE", result.Zone2.Input);
         Assert.NotNull(result.Zone3);
         Assert.Equal("OFF", result.Zone3.Power);
         Assert.Equal(-35.5, result.VolumeDb);
+        Assert.Equal(44.5, result.Volume);
         Assert.False(result.IsMuted);
         Assert.Equal(
             new[] { "CBL/SAT", "Media Player", "PHONO" },
@@ -105,6 +108,7 @@ public sealed class DenonXmlParserTests
         Assert.True(result.IsPoweredOn);
         Assert.Equal("ON", result.Power);
         Assert.Equal(-35.5, result.VolumeDb);
+        Assert.Equal(44.5, result.Volume);
         Assert.False(result.IsMuted);
         Assert.Equal("MPLAY", result.Input);
         Assert.Same(inputs, result.AvailableInputs);
