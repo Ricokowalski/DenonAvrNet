@@ -9,16 +9,13 @@ namespace DenonAvrNet.Profiles;
 internal interface IDenonReceiverProfile
 {
     string Id { get; }
-
     int SpeakerPresetCount { get; }
-
     bool SupportsSpeakerPresetLevels { get; }
-
     bool SupportsSpeakerDistances { get; }
-
+    bool SupportsSpeakerPresetSelection { get; }
     ISpeakerPresetLevelProvider SpeakerPresetLevels { get; }
-
     ISpeakerDistanceProvider SpeakerDistances { get; }
+    ISpeakerPresetSelectionProvider SpeakerPresetSelection { get; }
 }
 
 /// <summary>Implements the speaker-preset level API of one receiver family.</summary>
@@ -46,5 +43,19 @@ internal interface ISpeakerDistanceProvider
         DenonProfileContext context,
         int speakerIndex,
         double meters,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>Implements reading and switching of the active speaker preset of one receiver family.</summary>
+internal interface ISpeakerPresetSelectionProvider
+{
+    Task<int> GetActivePresetAsync(
+        DenonProfileContext context,
+        CancellationToken cancellationToken);
+
+    Task SelectPresetAsync(
+        DenonProfileContext context,
+        int preset,
+        TimeSpan confirmationTimeout,
         CancellationToken cancellationToken);
 }

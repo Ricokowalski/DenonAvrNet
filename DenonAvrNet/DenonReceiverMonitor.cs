@@ -1,3 +1,4 @@
+using DenonAvrNet.Logger;
 using DenonAvrNet.Models;
 
 namespace DenonAvrNet;
@@ -159,6 +160,7 @@ public sealed class DenonReceiverMonitor : IAsyncDisposable
         try
         {
             await _refreshLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+
             try
             {
                 CurrentState = await _receiver.UpdateAsync(cancellationToken).ConfigureAwait(false);
@@ -172,12 +174,18 @@ public sealed class DenonReceiverMonitor : IAsyncDisposable
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
+            // <-----------
         }
         catch (Exception exception)
         {
+            ReceiverLogger.WriteException("MONITOR", "Status refresh", exception);
             Error?.Invoke(exception);
         }
     }
 
-    private void OnError(Exception exception) => Error?.Invoke(exception);
+    private void OnError(Exception exception)
+    {
+        ReceiverLogger.WriteException("MONITOR", "Telnet listener", exception);
+        Error?.Invoke(exception);
+    }
 }

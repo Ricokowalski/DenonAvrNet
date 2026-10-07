@@ -11,6 +11,14 @@ namespace DenonAvrNet;
 /// <summary>Controls a Denon or compatible Marantz receiver through its HTTP/XML API.</summary>
 public sealed class DenonAvrClient : IDisposable
 {
+    /// <summary>Highest absolute speaker-preset level in dB. Accepted range is +/- this value.</summary>
+    public const double SpeakerLevelLimitDecibels = 12.0;
+
+    /// <summary>Lowest Main Zone volume in dB that <see cref="SetVolumeAsync(double, CancellationToken)"/> accepts.</summary>
+    public const double MinVolumeDecibels = -80.0;
+
+    /// <summary>Highest Main Zone volume in dB that <see cref="SetVolumeAsync(double, CancellationToken)"/> accepts.</summary>
+    public const double MaxVolumeDecibels = 18.0;
     private readonly DenonHttpTransport _httpTransport;
     private readonly DenonTelnetClient _telnetClient;
     private readonly bool _ownsTransport;
@@ -24,6 +32,7 @@ public sealed class DenonAvrClient : IDisposable
         new HashSet<DenonControlProtocol> { DenonControlProtocol.Http };
     private static readonly IReadOnlySet<DenonControlProtocol> TelnetOnly =
         new HashSet<DenonControlProtocol> { DenonControlProtocol.Telnet };
+    private static readonly TimeSpan DefaultSpeakerPresetConfirmationTimeout = TimeSpan.FromSeconds(30);
     private IReadOnlyList<string>? _availableInputs;
     private IDenonReceiverProfile? _receiverProfile;
     private DenonSpeakerLevelSnapshot? _speakerLevelSnapshot;
@@ -32,13 +41,13 @@ public sealed class DenonAvrClient : IDisposable
 
     /// <summary>Creates a client for a receiver host or IP address.</summary>
     /// <param name="host">Receiver hostname, IP address or HTTP(S) base address.</param>
-    /// <param name="requestTimeout">Optional timeout; defaults to five seconds.</param>
+    /// <param name="requestTimeout">Optional timeout; defaults to thirty seconds.</param>
     public DenonAvrClient(string host, TimeSpan? requestTimeout = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(host);
 
         Host = NormalizeHost(host);
-        _httpTransport = new DenonHttpTransport(requestTimeout ?? TimeSpan.FromSeconds(5));
+        _httpTransport = new DenonHttpTransport(requestTimeout ?? TimeSpan.FromSeconds(30));
         _telnetClient = new DenonTelnetClient(Host, requestTimeout);
         _ownsTransport = true;
     }
@@ -217,7 +226,8 @@ public sealed class DenonAvrClient : IDisposable
         AvrFeature.AudioInformation or
         AvrFeature.ActiveSpeakerStatus or
         AvrFeature.SpeakerPresetLevelControl or
-        AvrFeature.SpeakerDistanceControl => HttpOnly,
+        AvrFeature.SpeakerDistanceControl or
+        AvrFeature.SpeakerPresetSelection => HttpOnly,
         AvrFeature.Zone2Control or
         AvrFeature.Zone3Control or
         AvrFeature.LiveEvents or
@@ -251,6 +261,8 @@ public sealed class DenonAvrClient : IDisposable
                 GetReceiverProfile().SupportsSpeakerPresetLevels,
             AvrFeature.SpeakerDistanceControl =>
                 GetReceiverProfile().SupportsSpeakerDistances,
+            AvrFeature.SpeakerPresetSelection =>
+                GetReceiverProfile().SupportsSpeakerPresetSelection,
             AvrFeature.MainZonePower or
             AvrFeature.MainZoneVolume or
             AvrFeature.MainZoneMute or
@@ -476,16 +488,19 @@ public sealed class DenonAvrClient : IDisposable
 
     /// <summary>Sets Main Zone volume through the selected transport, rounded to a half-decibel step.</summary>
     public Task SetVolumeAsync(
-        double volumeDb,
-        DenonControlProtocol protocol,
-        CancellationToken cancellationToken = default)
+            double volumeDb,
+            DenonControlProtocol protocol,
+            CancellationToken cancellationToken = default)
     {
-        if (volumeDb is < -80.0 or > 18.0)
+        if (volumeDb is < MinVolumeDecibels or > MaxVolumeDecibels)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(volumeDb),
                 volumeDb,
-                "Die Lautstärke muss zwischen -80,0 und +18,0 dB liegen.");
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The volume must be between {MinVolumeDecibels:+0.0;-0.0} and {MaxVolumeDecibels:+0.0;-0.0} dB."));
+            // <-----------
         }
 
         var roundedVolume = Math.Round(volumeDb * 2, MidpointRounding.ToEven) / 2.0;
@@ -626,9 +641,14 @@ public sealed class DenonAvrClient : IDisposable
             throw new ArgumentOutOfRangeException(nameof(speakerIndex));
         }
 
-        if (decibels is < -12.0 or > 12.0)
+        if (decibels is < -SpeakerLevelLimitDecibels or > SpeakerLevelLimitDecibels)
         {
-            throw new ArgumentOutOfRangeException(nameof(decibels), "Der Pegel muss zwischen -12,0 und +12,0 dB liegen.");
+            throw new ArgumentOutOfRangeException(
+                nameof(decibels),
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"The level must be between {-SpeakerLevelLimitDecibels:+0.0;-0.0} and {SpeakerLevelLimitDecibels:+0.0;-0.0} dB."));
+            // <-----------
         }
 
         return GetReceiverProfile().SpeakerPresetLevels.SetLevelAsync(
@@ -780,6 +800,105 @@ public sealed class DenonAvrClient : IDisposable
                 cancellationToken);
     }
 
+    /// <summary>
+    /// Returns the speakers that exist in the receiver's configuration together with their persistent
+    /// level (dB) and distance (meters) from the active speaker preset (HTTP only).
+    /// Existence is taken from the receiver's active-speaker list. The receiver reports all subwoofers
+    /// there as one <see cref="SpeakerChannel.Subwoofer"/> flag; if it is set, every individual subwoofer
+    /// index returned by the speaker setup interface is included. Combined group entries are omitted.
+    /// Returns an empty list if the receiver reports no active-speaker information.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The client has not been initialized.</exception>
+    /// <exception cref="NotSupportedException">The receiver profile does not support levels or distances.</exception>
+    public async Task<IReadOnlyList<DenonConfiguredSpeaker>> GetConfiguredSpeakersAsync(
+    CancellationToken cancellationToken = default)
+    {
+        var profile = GetReceiverProfile();
+
+        if (!profile.SupportsSpeakerPresetLevels || !profile.SupportsSpeakerDistances)
+        {
+            throw new NotSupportedException(
+                "Das Lesen von Lautsprecher-Pegeln und -Distanzen wird von diesem Receiver nicht unterstützt.");
+            // <-----------
+        }
+
+        var state = await UpdateAsync(cancellationToken).ConfigureAwait(false);
+        var activeChannels = state.Audio?.ActiveSpeakerChannels ?? SpeakerChannel.None;
+        if (activeChannels == SpeakerChannel.None)
+        {
+            return [];
+            // <-----------
+        }
+
+        var context = new DenonProfileContext(Host, _httpTransport);
+        var levels = await profile.SpeakerPresetLevels
+            .GetLevelsAsync(context, cancellationToken)
+            .ConfigureAwait(false);
+        var distanceConfiguration = await profile.SpeakerDistances
+            .GetDistancesAsync(context, cancellationToken)
+            .ConfigureAwait(false);
+
+        // Level and distance pages use different index schemes, so they are joined by channel.
+        var levelsByChannel = levels
+            .Where(level => level.Channel is not null)
+            .ToLookup(level => level.Channel!.Value);
+        var distancesByChannel = distanceConfiguration.Speakers
+            .Where(distance => distance.Channel is not null)
+            .ToLookup(distance => distance.Channel!.Value);
+
+        const SpeakerChannel subwooferChannels =
+            SpeakerChannel.Subwoofer |
+            SpeakerChannel.Subwoofer2 |
+            SpeakerChannel.Subwoofer3 |
+            SpeakerChannel.Subwoofer4;
+
+        var channels = levelsByChannel
+            .Select(group => group.Key)
+            .Union(distancesByChannel.Select(group => group.Key))
+            .ToArray();
+
+        List<DenonConfiguredSpeaker> result = [];
+
+        foreach (var channel in channels)
+        {
+            // Combined group entry (for example 32 or 35): not a physical speaker.
+            if (channel == SpeakerChannel.None ||
+                System.Numerics.BitOperations.PopCount((ulong)channel) != 1)
+            {
+                continue;
+                // <-----------
+            }
+
+            // The active-speaker list reports all subwoofers as one flag (Subwoofer),
+            // so every single subwoofer index exists if that flag is set.
+            var isSubwoofer = (channel & subwooferChannels) != SpeakerChannel.None;
+            var exists = isSubwoofer
+                ? activeChannels.HasFlag(SpeakerChannel.Subwoofer)
+                : activeChannels.HasFlag(channel);
+
+            if (!exists)
+            {
+                continue;
+                // <-----------
+            }
+
+            var level = levelsByChannel[channel].FirstOrDefault();
+            var distance = distancesByChannel[channel].FirstOrDefault();
+
+            result.Add(new DenonConfiguredSpeaker(
+                level?.SpeakerIndex ?? distance!.SpeakerIndex,
+                channel,
+                level?.Decibels,
+                distance?.Meters));
+        }
+
+        result.Sort((left, right) => left.SpeakerIndex.CompareTo(right.SpeakerIndex));
+
+        return result;
+        // <-----------
+    }
+
+
     /// <summary>Sends a complete Denon HTTP command path.</summary>
     /// <param name="commandPath">Path beginning with <c>/</c>, including any query command.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
@@ -806,6 +925,68 @@ public sealed class DenonAvrClient : IDisposable
 
         _disposed = true;
     }
+
+    /// <summary>
+    /// Reads the number of the currently active speaker preset through the receiver-specific
+    /// speaker setup web API (HTTP only).
+    /// </summary>
+    public Task<int> GetActiveSpeakerPresetAsync(
+        CancellationToken cancellationToken = default) =>
+        GetReceiverProfile()
+            .SpeakerPresetSelection
+            .GetActivePresetAsync(
+                new DenonProfileContext(
+                    Host,
+                    _httpTransport),
+                cancellationToken);
+
+    /// <summary>
+    /// Switches the active speaker preset through the receiver-specific speaker setup web API (HTTP only)
+    /// and returns once the receiver confirms the new preset. A switch can take several seconds.
+    /// Calls must not overlap with other calls on the same client.
+    /// </summary>
+    /// <param name="preset">Speaker preset number, starting at 1.</param>
+    /// <param name="confirmationTimeout">
+    /// Maximum time to wait for the confirmation after the switch was requested; defaults to 30 seconds.
+    /// </param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <exception cref="DenonProtocolException">The receiver did not confirm the switch in time.</exception>
+    public Task SelectSpeakerPresetAsync(
+        int preset,
+        TimeSpan? confirmationTimeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = GetReceiverProfile();
+
+        // Unsupported profiles report NotSupportedException from their provider instead.
+        if (profile.SupportsSpeakerPresetSelection &&
+            (preset < 1 || preset > profile.SpeakerPresetCount))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(preset),
+                preset,
+                $"Das Speaker Preset muss zwischen 1 und {profile.SpeakerPresetCount} liegen.");
+            // <-----------
+        }
+
+        if (confirmationTimeout is { } timeout && timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(confirmationTimeout));
+            // <-----------
+        }
+
+        return profile
+            .SpeakerPresetSelection
+            .SelectPresetAsync(
+                new DenonProfileContext(
+                    Host,
+                    _httpTransport),
+                preset,
+                confirmationTimeout ?? DefaultSpeakerPresetConfirmationTimeout,
+                cancellationToken);
+        // <-----------
+    }
+
 
     private int GetInitializedPort()
     {

@@ -8,6 +8,27 @@ internal static class DenonEndpoints
     internal static string SpeakerDistances() =>
         $"/ajax/speakers/get_config?type=4&_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 
+    internal static string SpeakerPreset() =>
+    $"/ajax/speakers/get_config?type=11&_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+
+    internal static string SetSpeakerPreset(int preset)
+    {
+        var data = $"<SpeakerPreset>{preset}</SpeakerPreset>";
+
+        return
+            $"/ajax/speakers/set_config?type=11&data={Uri.EscapeDataString(data)}&_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+        // <-----------
+    }
+
+    internal static string StopTestTone()
+    {
+        const string data = "<StopTestTone></StopTestTone>";
+
+        return
+            $"/ajax/speakers/set_config?type=20&data={Uri.EscapeDataString(data)}&_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+        // <-----------
+    }
+
     internal const string DeviceInfo =
         "/goform/Deviceinfo.xml";
 

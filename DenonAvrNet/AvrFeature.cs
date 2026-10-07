@@ -22,5 +22,7 @@ public enum AvrFeature
     ActiveSpeakerStatus,
     SpeakerPresetControl,
     SurroundModeControl,
-    DigitalInputModeControl
+    DigitalInputModeControl,
+    /// <summary>Reads and switches the active speaker preset through the receiver's speaker setup web API.</summary>
+    SpeakerPresetSelection
 }

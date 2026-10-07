@@ -1,7 +1,10 @@
+using DenonAvrNet.Exceptions;
+using DenonAvrNet.Logger;
+using DenonAvrNet.Models;
+using DenonAvrNet.Profiles;
+using DenonAvrNet.Protocol;
 using System.Net.Sockets;
 using System.Text;
-using DenonAvrNet.Models;
-using DenonAvrNet.Protocol;
 
 namespace DenonAvrNet;
 
@@ -29,52 +32,79 @@ public sealed class DenonTelnetClient
     public async Task<string> SendCommandAsync(string command, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
+
         if (command.Contains('\r') || command.Contains('\n'))
         {
             throw new ArgumentException("Ein Telnet-Befehl darf keinen Zeilenumbruch enthalten.", nameof(command));
+            // <-----------
         }
 
         using var timeoutSource = new CancellationTokenSource(_timeout);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, timeoutSource.Token);
         var token = linkedSource.Token;
-        using var tcpClient = new TcpClient();
-        await tcpClient.ConnectAsync(Host, 23, token).ConfigureAwait(false);
-        await using var stream = tcpClient.GetStream();
-        var request = Encoding.ASCII.GetBytes($"{command}\r");
-        await stream.WriteAsync(request, token).ConfigureAwait(false);
-        await stream.FlushAsync(token).ConfigureAwait(false);
 
-        var response = new StringBuilder();
-        var buffer = new byte[1];
-        while (true)
+        try
         {
-            var read = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
-            if (read == 0)
-            {
-                break;
-            }
+            using var tcpClient = new TcpClient();
+            await tcpClient.ConnectAsync(Host, 23, token).ConfigureAwait(false);
 
-            var character = (char)buffer[0];
-            if (character is '\r' or '\n')
+            await using var stream = tcpClient.GetStream();
+            var request = Encoding.ASCII.GetBytes($"{command}\r");
+            await stream.WriteAsync(request, token).ConfigureAwait(false);
+            await stream.FlushAsync(token).ConfigureAwait(false);
+
+            ReceiverLogger.Write("TELNET", $"TX {command}");
+
+            var response = new StringBuilder();
+            var buffer = new byte[1];
+
+            while (true)
             {
-                if (response.Length > 0)
+                var read = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
+
+                if (read == 0)
                 {
                     break;
+                    // <-----------
                 }
 
-                continue;
+                var character = (char)buffer[0];
+
+                if (character is '\r' or '\n')
+                {
+                    if (response.Length > 0)
+                    {
+                        break;
+                        // <-----------
+                    }
+
+                    continue;
+                    // <-----------
+                }
+
+                response.Append(character);
             }
 
-            response.Append(character);
-        }
+            if (response.Length == 0)
+            {
+                throw new IOException("Der Receiver hat auf den Telnet-Befehl keine Antwort gesendet.");
+                // <-----------
+            }
 
-        if (response.Length == 0)
+            var responseText = response.ToString();
+
+            ReceiverLogger.Write("TELNET", $"RX {responseText}");
+
+            return responseText;
+            // <-----------
+        }
+        catch (Exception exception)
         {
-            throw new IOException("Der Receiver hat auf den Telnet-Befehl keine Antwort gesendet.");
+            ReceiverLogger.WriteException("TELNET", $"Command '{command}'", exception);
+            throw;
+            // <-----------
         }
-
-        return response.ToString();
     }
 
     /// <summary>Queries the current Zone 2 state.</summary>
@@ -344,55 +374,79 @@ public sealed class DenonTelnetClient
     }
 
     private async Task<IReadOnlyList<string>> SendCommandUntilAsync(
-        string command,
-        string terminatingResponse,
-        CancellationToken cancellationToken)
+    string command,
+    string terminatingResponse,
+    CancellationToken cancellationToken)
     {
         using var timeoutSource = new CancellationTokenSource(_timeout);
         using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, timeoutSource.Token);
         var token = linkedSource.Token;
-        using var tcpClient = new TcpClient();
-        await tcpClient.ConnectAsync(Host, 23, token).ConfigureAwait(false);
-        await using var stream = tcpClient.GetStream();
-        var request = Encoding.ASCII.GetBytes($"{command}\r");
-        await stream.WriteAsync(request, token).ConfigureAwait(false);
-        await stream.FlushAsync(token).ConfigureAwait(false);
 
-        var responses = new List<string>();
-        var line = new StringBuilder();
-        var buffer = new byte[1];
-        while (true)
+        try
         {
-            var read = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
-            if (read == 0)
+            using var tcpClient = new TcpClient();
+            await tcpClient.ConnectAsync(Host, 23, token).ConfigureAwait(false);
+
+            await using var stream = tcpClient.GetStream();
+            var request = Encoding.ASCII.GetBytes($"{command}\r");
+            await stream.WriteAsync(request, token).ConfigureAwait(false);
+            await stream.FlushAsync(token).ConfigureAwait(false);
+
+            ReceiverLogger.Write("TELNET", $"TX {command}");
+
+            var responses = new List<string>();
+            var line = new StringBuilder();
+            var buffer = new byte[1];
+
+            while (true)
             {
-                break;
+                var read = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
+
+                if (read == 0)
+                {
+                    break;
+                    // <-----------
+                }
+
+                var character = (char)buffer[0];
+
+                if (character is not ('\r' or '\n'))
+                {
+                    line.Append(character);
+                    continue;
+                    // <-----------
+                }
+
+                if (line.Length == 0)
+                {
+                    continue;
+                    // <-----------
+                }
+
+                var response = line.ToString();
+                responses.Add(response);
+
+                ReceiverLogger.Write("TELNET", $"RX {response}");
+
+                if (string.Equals(response, terminatingResponse, StringComparison.OrdinalIgnoreCase))
+                {
+                    return responses;
+                    // <-----------
+                }
+
+                line.Clear();
             }
 
-            var character = (char)buffer[0];
-            if (character is not ('\r' or '\n'))
-            {
-                line.Append(character);
-                continue;
-            }
-
-            if (line.Length == 0)
-            {
-                continue;
-            }
-
-            var response = line.ToString();
-            responses.Add(response);
-            if (string.Equals(response, terminatingResponse, StringComparison.OrdinalIgnoreCase))
-            {
-                return responses;
-            }
-
-            line.Clear();
+            throw new IOException($"Der Receiver hat die erwartete Abschlussmeldung '{terminatingResponse}' nicht gesendet.");
+            // <-----------
         }
-
-        throw new IOException($"Der Receiver hat die erwartete Abschlussmeldung '{terminatingResponse}' nicht gesendet.");
+        catch (Exception exception)
+        {
+            ReceiverLogger.WriteException("TELNET", $"Command '{command}'", exception);
+            throw;
+            // <-----------
+        }
     }
 
     private static DenonSpeakerLevel ParseSpeakerLevel(string response)

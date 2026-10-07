@@ -3,8 +3,8 @@
 /// <summary>Distance unit currently selected in the receiver's speaker setup.</summary>
 public enum DenonSpeakerDistanceUnit
 {
-    Feet = 1,
-    Meters = 2
+    Meters = 1,
+    Feet = 2
 }
 
 /// <summary>

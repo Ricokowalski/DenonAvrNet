@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using DenonAvrNet.Logger;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 
@@ -37,13 +38,33 @@ internal sealed class DenonHttpTransport : IDisposable
         CancellationToken cancellationToken)
     {
         var requestUri = BuildUri(host, port, pathAndQuery);
-        using var response = await _httpClient.GetAsync(
-            requestUri,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken).ConfigureAwait(false);
 
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        ReceiverLogger.Write("HTTP", $"GET {requestUri}");
+
+        try
+        {
+            using var response = await _httpClient.GetAsync(
+                requestUri,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
+
+            ReceiverLogger.Write("HTTP", $"GET {requestUri} -> {(int)response.StatusCode}");
+
+            response.EnsureSuccessStatusCode();
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            ReceiverLogger.Write("HTTP", $"GET {requestUri} response body:{Environment.NewLine}{body}");
+
+            return body;
+            // <-----------
+        }
+        catch (Exception exception)
+        {
+            ReceiverLogger.WriteException("HTTP", $"GET {requestUri}", exception);
+            throw;
+            // <-----------
+        }
     }
 
     internal async Task<string> PostXmlAsync(
@@ -56,18 +77,39 @@ internal sealed class DenonHttpTransport : IDisposable
         ArgumentNullException.ThrowIfNull(xml);
 
         var requestUri = BuildUri(host, port, path);
-        using var content = new ByteArrayContent(Encoding.UTF8.GetBytes(xml));
-        content.Headers.ContentType = new MediaTypeHeaderValue("text/xml")
-        {
-            CharSet = "utf-8"
-        };
-        using var response = await _httpClient.PostAsync(
-            requestUri,
-            content,
-            cancellationToken).ConfigureAwait(false);
 
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        ReceiverLogger.Write("HTTP", $"POST {requestUri} request body:{Environment.NewLine}{xml}");
+
+        try
+        {
+            using var content = new ByteArrayContent(Encoding.UTF8.GetBytes(xml));
+            content.Headers.ContentType = new MediaTypeHeaderValue("text/xml")
+            {
+                CharSet = "utf-8"
+            };
+
+            using var response = await _httpClient.PostAsync(
+                requestUri,
+                content,
+                cancellationToken).ConfigureAwait(false);
+
+            ReceiverLogger.Write("HTTP", $"POST {requestUri} -> {(int)response.StatusCode}");
+
+            response.EnsureSuccessStatusCode();
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            ReceiverLogger.Write("HTTP", $"POST {requestUri} response body:{Environment.NewLine}{body}");
+
+            return body;
+            // <-----------
+        }
+        catch (Exception exception)
+        {
+            ReceiverLogger.WriteException("HTTP", $"POST {requestUri}", exception);
+            throw;
+            // <-----------
+        }
     }
 
     public void Dispose() => _httpClient.Dispose();

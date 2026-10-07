@@ -52,29 +52,28 @@ internal static class DenonReceiverProfileRegistry
 internal sealed class AvcX6800hProfile : IDenonReceiverProfile
 {
     public string Id => "avc-x6800h";
-
     public int SpeakerPresetCount => 2;
-
     public bool SupportsSpeakerPresetLevels => true;
-
     public bool SupportsSpeakerDistances => true;
+    public bool SupportsSpeakerPresetSelection => true;
 
     public ISpeakerPresetLevelProvider SpeakerPresetLevels { get; } =
         new AjaxSpeakerPresetLevelProvider();
 
     public ISpeakerDistanceProvider SpeakerDistances { get; } =
         new AjaxSpeakerDistanceProvider();
+
+    public ISpeakerPresetSelectionProvider SpeakerPresetSelection { get; } =
+        new AjaxSpeakerPresetSelectionProvider();
 }
 
 internal sealed class AvcX6700hProfile : IDenonReceiverProfile
 {
     public string Id => "avc-x6700h";
-
     public int SpeakerPresetCount => 2;
-
     public bool SupportsSpeakerPresetLevels => false;
-
     public bool SupportsSpeakerDistances => false;
+    public bool SupportsSpeakerPresetSelection => false;
 
     // The X6700H's speaker setup UI/API is different from the X6800H's.
     // Add its captured request/response implementation here; keeping this
@@ -86,17 +85,19 @@ internal sealed class AvcX6700hProfile : IDenonReceiverProfile
     public ISpeakerDistanceProvider SpeakerDistances { get; } =
         new UnsupportedSpeakerDistanceProvider(
             "AVC-X6700H");
+
+    public ISpeakerPresetSelectionProvider SpeakerPresetSelection { get; } =
+        new UnsupportedSpeakerPresetSelectionProvider(
+            "AVC-X6700H");
 }
 
 internal sealed class LegacyReceiverProfile : IDenonReceiverProfile
 {
     public string Id => "legacy-goform";
-
     public int SpeakerPresetCount => 0;
-
     public bool SupportsSpeakerPresetLevels => false;
-
     public bool SupportsSpeakerDistances => false;
+    public bool SupportsSpeakerPresetSelection => false;
 
     public ISpeakerPresetLevelProvider SpeakerPresetLevels { get; } =
         new UnsupportedSpeakerPresetLevelProvider(
@@ -105,17 +106,19 @@ internal sealed class LegacyReceiverProfile : IDenonReceiverProfile
     public ISpeakerDistanceProvider SpeakerDistances { get; } =
         new UnsupportedSpeakerDistanceProvider(
             "legacy GoForm receiver");
+
+    public ISpeakerPresetSelectionProvider SpeakerPresetSelection { get; } =
+        new UnsupportedSpeakerPresetSelectionProvider(
+            "legacy GoForm receiver");
 }
 
 internal sealed class UnknownReceiverProfile : IDenonReceiverProfile
 {
     public string Id => "unknown";
-
     public int SpeakerPresetCount => 0;
-
     public bool SupportsSpeakerPresetLevels => false;
-
     public bool SupportsSpeakerDistances => false;
+    public bool SupportsSpeakerPresetSelection => false;
 
     public ISpeakerPresetLevelProvider SpeakerPresetLevels { get; } =
         new UnsupportedSpeakerPresetLevelProvider(
@@ -123,5 +126,9 @@ internal sealed class UnknownReceiverProfile : IDenonReceiverProfile
 
     public ISpeakerDistanceProvider SpeakerDistances { get; } =
         new UnsupportedSpeakerDistanceProvider(
+            "this receiver");
+
+    public ISpeakerPresetSelectionProvider SpeakerPresetSelection { get; } =
+        new UnsupportedSpeakerPresetSelectionProvider(
             "this receiver");
 }

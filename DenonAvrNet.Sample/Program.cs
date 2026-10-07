@@ -1,9 +1,10 @@
-﻿using System.Diagnostics;
+﻿using DenonAvrNet;
+using DenonAvrNet.Exceptions;
+using DenonAvrNet.Logger;
+using DenonAvrNet.Models;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using DenonAvrNet;
-using DenonAvrNet.Exceptions;
-using DenonAvrNet.Models;
 
 Console.OutputEncoding = Encoding.UTF8;
 
@@ -14,7 +15,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
     cancellationSource.Cancel();
 };
 
-Console.Write("Receiver-IP [10.37.0.23]: ");
+Console.Write("Receiver IP [10.37.0.23]: ");
 var enteredHost = Console.ReadLine()?.Trim();
 var host = string.IsNullOrWhiteSpace(enteredHost) ? "10.37.0.23" : enteredHost;
 
@@ -22,139 +23,239 @@ using var receiver = new DenonAvrClient(host);
 
 try
 {
-    Console.WriteLine($"\nVerbinde mit {host} …");
+    Console.WriteLine($"\nConnecting to {host} …");
     var device = await receiver.InitializeAsync(cancellationSource.Token);
+    Console.WriteLine("Connection established:");
+    Console.WriteLine($"  Model:       {device.ModelName}");
+    Console.WriteLine($"  API Version: {device.CommunicationApiVersion ?? "unknown"}");
+    Console.WriteLine($"  Zones:       {device.ZoneCount?.ToString() ?? "unknown"}");
+    Console.WriteLine($"  HTTP Port:   {receiver.HttpPort}");
 
-    Console.WriteLine("Verbindung hergestellt:");
-    Console.WriteLine($"  Modell:      {device.ModelName}");
-    Console.WriteLine($"  API-Version: {device.CommunicationApiVersion ?? "unbekannt"}");
-    Console.WriteLine($"  Zonen:       {device.ZoneCount?.ToString() ?? "unbekannt"}");
-    Console.WriteLine($"  HTTP-Port:   {receiver.HttpPort}");
+    var telnetOutputEnabled = true;
 
     await using var monitor = new DenonReceiverMonitor(host);
     monitor.TelnetEventReceived += telnetEvent =>
     {
+        if (!telnetOutputEnabled)
+        {
+            return;
+            // <-----------
+        }
+
         if (telnetEvent.ActiveSpeakerMatrix is { } matrix)
         {
             Console.WriteLine(
-                $"\n[Telnet {telnetEvent.Timestamp:HH:mm:ss}] Aktive Lautsprecher: " +
-                $"{matrix.ActivePositionCount}/{matrix.PositionCount} Ausgangspositionen " +
+                $"\n[Telnet {telnetEvent.Timestamp:HH:mm:ss}] Active speakers: " +
+                $"{matrix.ActivePositionCount}/{matrix.PositionCount} output positions " +
                 $"(Matrix: {matrix.RawValues})");
             return;
         }
-
         Console.WriteLine($"\n[Telnet {telnetEvent.Timestamp:HH:mm:ss}] {telnetEvent.Message}");
     };
+
     monitor.Error += exception =>
         Console.Error.WriteLine($"\n[Monitor] {exception.Message}");
+
     await monitor.StartAsync(cancellationSource.Token);
-    Console.WriteLine("Hintergrundmonitor aktiv (Telnet-Ereignisse + Statusabfrage alle 15 Sekunden).");
+    Console.WriteLine("Background monitor active (Telnet events + status refresh every 15 seconds).");
 
     await ShowStatusAsync(receiver, cancellationSource.Token);
 
     while (!cancellationSource.IsCancellationRequested)
     {
-        PrintMenu();
+        PrintMenu(telnetOutputEnabled);
+
         var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
 
-        switch (choice)
+        try
         {
-            case "1":
-                await ShowStatusAsync(receiver, cancellationSource.Token);
-                break;
-            case "2":
-                await ExecuteAndRefreshAsync(receiver, receiver.PowerOnAsync, cancellationSource.Token);
-                break;
-            case "3":
-                if (Confirm("Main Zone wirklich in Standby schalten?"))
-                {
-                    await receiver.PowerOffAsync(cancellationSource.Token);
-                    Console.WriteLine("Standby-Befehl gesendet.");
-                }
-                break;
-            case "4":
-                await ExecuteAndRefreshAsync(receiver, receiver.VolumeUpAsync, cancellationSource.Token);
-                break;
-            case "5":
-                await ExecuteAndRefreshAsync(receiver, receiver.VolumeDownAsync, cancellationSource.Token);
-                break;
-            case "6":
-                await SetVolumeAsync(receiver, cancellationSource.Token);
-                break;
-            case "7":
-                await ExecuteAndRefreshAsync(
-                    receiver,
-                    token => receiver.SetMuteAsync(true, token),
-                    cancellationSource.Token);
-                break;
-            case "8":
-                await ExecuteAndRefreshAsync(
-                    receiver,
-                    token => receiver.SetMuteAsync(false, token),
-                    cancellationSource.Token);
-                break;
-            case "9":
-                await SetInputAsync(receiver, cancellationSource.Token);
-                break;
-            case "D":
-                await RunReadOnlyDiagnosticAsync(receiver, cancellationSource.Token);
-                break;
-            case "T":
-                await ControlAdditionalZonesAsync(host, receiver, cancellationSource.Token);
-                break;
-            case "A":
-                await ControlAudioAndSpeakerPresetsAsync(host, receiver, cancellationSource.Token);
-                break;
-            case "L":
-                await ControlSpeakerLevelsAsync(receiver, cancellationSource.Token);
-                break;
-            case "0":
-            case "Q":
-                return;
-            default:
-                Console.WriteLine("Unbekannte Auswahl.");
-                break;
+            switch (choice)
+            {
+                case "1":
+                    await ShowStatusAsync(receiver, cancellationSource.Token);
+                    break;
+                case "2":
+                    await ExecuteAndRefreshAsync(receiver, receiver.PowerOnAsync, cancellationSource.Token);
+                    break;
+                case "3":
+                    if (Confirm("Really switch Main Zone to standby?"))
+                    {
+                        await receiver.PowerOffAsync(cancellationSource.Token);
+                        Console.WriteLine("Standby command sent.");
+                    }
+                    break;
+                case "4":
+                    await ExecuteAndRefreshAsync(receiver, receiver.VolumeUpAsync, cancellationSource.Token);
+                    break;
+                case "5":
+                    await ExecuteAndRefreshAsync(receiver, receiver.VolumeDownAsync, cancellationSource.Token);
+                    break;
+                case "6":
+                    await SetVolumeAsync(receiver, cancellationSource.Token);
+                    break;
+                case "7":
+                    await ExecuteAndRefreshAsync(
+                        receiver,
+                        token => receiver.SetMuteAsync(true, token),
+                        cancellationSource.Token);
+                    break;
+                case "8":
+                    await ExecuteAndRefreshAsync(
+                        receiver,
+                        token => receiver.SetMuteAsync(false, token),
+                        cancellationSource.Token);
+                    break;
+                case "9":
+                    await SetInputAsync(receiver, cancellationSource.Token);
+                    break;
+                case "D":
+                    await RunReadOnlyDiagnosticAsync(receiver, cancellationSource.Token);
+                    break;
+                case "Z":
+                    await ControlAdditionalZonesAsync(host, receiver, cancellationSource.Token);
+                    break;
+                // <-----------
+                case "A":
+                    await ControlAudioAndSpeakerPresetsAsync(host, receiver, cancellationSource.Token);
+                    break;
+                // <-----------
+                case "P":
+                    await ControlSpeakerPresetHttpAsync(receiver, cancellationSource.Token);
+                    break;
+                // <-----------
+                case "L":
+                    await ControlSpeakerLevelsAsync(receiver, cancellationSource.Token);
+                    break;
+                // <-----------
+                case "S":
+                    await ShowSpeakerLevelsAndDistancesAsync(receiver, cancellationSource.Token);
+                    break;
+                // <-----------
+                case "G":
+                    ControlReceiverLogger();
+                    break;
+                // <-----------
+                case "TE":
+                    telnetOutputEnabled = true;
+                    Console.WriteLine("Telnet output enabled.");
+                    break;
+                // <-----------
+                case "TD":
+                    telnetOutputEnabled = false;
+                    Console.WriteLine("Telnet output disabled.");
+                    break;
+                // <-----------
+                case "LE":
+                    ReceiverLogger.Enabled = true;
+                    Console.WriteLine($"Logging enabled ({ReceiverLogger.FilePath}).");
+                    break;
+                // <-----------
+                case "LD":
+                    ReceiverLogger.Enabled = false;
+                    Console.WriteLine("Logging disabled.");
+                    break;
+                // <-----------
+                case "LTE":
+                    ReceiverLogger.TelnetLoggingEnabled = true;
+                    Console.WriteLine("Telnet logging enabled.");
+                    break;
+                // <-----------
+                case "LTD":
+                    ReceiverLogger.TelnetLoggingEnabled = false;
+                    Console.WriteLine("Telnet logging disabled.");
+                    break;
+                // <-----------
+                case "0":
+                case "Q":
+                    return;
+                default:
+                    Console.WriteLine("Unknown selection.");
+                    break;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationSource.IsCancellationRequested)
+        {
+            throw;
+            // <-----------
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("\nTimeout: The receiver did not respond in time. Program continues.");
+        }
+        catch (DenonAvrException exception)
+        {
+            Console.Error.WriteLine($"\nDenon error: {exception.Message}");
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException or
+            IOException or
+            System.Net.Sockets.SocketException or
+            NotSupportedException or
+            InvalidOperationException or
+            ArgumentException or
+            FormatException or
+            InvalidDataException)
+        {
+            Console.Error.WriteLine($"\nError: {exception.Message}");
         }
     }
 }
 catch (OperationCanceledException)
 {
-    Console.WriteLine("\nAbgebrochen.");
+    Console.WriteLine("\nCancelled.");
 }
 catch (DenonAvrException exception)
 {
-    Console.Error.WriteLine($"\nDenon-Fehler: {exception.Message}");
+    Console.Error.WriteLine($"\nDenon error: {exception.Message}");
 }
 catch (HttpRequestException exception)
 {
-    Console.Error.WriteLine($"\nNetzwerkfehler: {exception.Message}");
+    Console.Error.WriteLine($"\nNetwork error: {exception.Message}");
 }
 catch (Exception exception)
 {
-    Console.Error.WriteLine($"\nUnerwarteter Fehler: {exception}");
+    Console.Error.WriteLine($"\nUnexpected error: {exception}");
 }
 
-static void PrintMenu()
+static void PrintMenu(bool telnetOutputEnabled)
 {
-    Console.WriteLine("""
+    Console.WriteLine($"""
 
-        ── Denon AVR Testprogramm ──
-        1  Status aktualisieren
-        2  Main Zone einschalten
-        3  Main Zone ausschalten
-        4  Lauter
-        5  Leiser
-        6  Lautstärke setzen
-        7  Mute einschalten
-        8  Mute ausschalten
-        9  Eingang auswählen
-        D  Nur-Lese-Diagnose (5 Statusabfragen)
-        T  Zone 2/3 anzeigen und schalten (Telnet)
-        A  Speaker-Presets und Audio-Modi (Telnet)
-        L  Lautsprecher-Kanalpegel (Telnet)
-        0  Beenden
+        ── Denon AVR Test Program ──
+
+        STATUS
+          1    Refresh status
+          D    Read-only diagnostic (5 status queries)
+
+        MAIN ZONE
+          2    Power on
+          3    Standby
+          4    Volume up
+          5    Volume down
+          6    Set volume
+          7    Mute on
+          8    Mute off
+          9    Select input
+
+        ZONES AND AUDIO
+          Z    Zone 2/3: power, volume, mute, input (Telnet)
+          A    Speaker presets 1/2 and audio modes (Telnet)
+
+        SPEAKERS
+          P    Speaker preset: read/switch (HTTP, with confirmation)
+          L    Channel levels (Telnet)
+          S    Show speaker levels and distances (HTTP)
+
+        CONSOLE AND LOG
+          TE   Telnet output on      TD   Telnet output off     (now: {(telnetOutputEnabled ? "on" : "off")})
+          LE   Log on                LD   Log off               (now: {(ReceiverLogger.Enabled ? "on" : "off")})
+          LTE  Log Telnet on         LTD  Log Telnet off        (now: {(ReceiverLogger.TelnetLoggingEnabled ? "on" : "off")})
+          G    Log setup (path, enable/disable, clear)
+
+          0    Exit (also Q)
         """);
-    Console.Write("Auswahl: ");
+
+    Console.Write("Selection: ");
 }
 
 static async Task ControlSpeakerLevelsAsync(
@@ -164,18 +265,17 @@ static async Task ControlSpeakerLevelsAsync(
     while (!cancellationToken.IsCancellationRequested)
     {
         Console.WriteLine("""
-
-            ── Lautsprecher-Kanalpegel (Telnet) ──
-            1  Alle Speaker-Preset-Pegel anzeigen (HTTP)
-            2  Kanalpegel direkt setzen
-            3  Kanalpegel schrittweise erhöhen
-            4  Kanalpegel schrittweise verringern
-            5  Subwoofer-Kanal auf OFF setzen
-            H  Speaker-Preset-Pegel per HTTP setzen (echte Setup-Werte)
-            W  Alle Kanalpegel auf Denon-Werkswerte zurücksetzen
-            0  Zurück zum Hauptmenü
+            ── Speaker Channel Levels (Telnet) ──
+            1  Show all speaker preset levels (HTTP)
+            2  Set channel level directly
+            3  Increase channel level incrementally
+            4  Decrease channel level incrementally
+            5  Set subwoofer channel to OFF
+            H  Set speaker preset level via HTTP (actual setup values)
+            W  Reset all channel levels to Denon factory defaults
+            0  Back to main menu
             """);
-        Console.Write("Pegel-Auswahl: ");
+        Console.Write("Level selection: ");
         var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
 
         switch (choice)
@@ -203,17 +303,16 @@ static async Task ControlSpeakerLevelsAsync(
                 await SetSpeakerPresetLevelFromConsoleAsync(receiver, cancellationToken);
                 break;
             case "W":
-                if (Confirm("Wirklich alle Kanalpegel auf Denon-Werkswerte zurücksetzen?"))
+                if (Confirm("Really reset all channel levels to Denon factory defaults?"))
                 {
                     await receiver.ResetSpeakerLevelsToFactoryDefaultsAsync(
                         DenonControlProtocol.Telnet,
                         cancellationToken);
-                    Console.WriteLine("Die Kanalpegel wurden auf Denon-Werkswerte zurückgesetzt.");
+                    Console.WriteLine("Channel levels have been reset to Denon factory defaults.");
                 }
-
                 break;
             default:
-                Console.WriteLine("Ungültige Auswahl.");
+                Console.WriteLine("Invalid selection.");
                 break;
         }
     }
@@ -223,22 +322,22 @@ static async Task SetSpeakerPresetLevelFromConsoleAsync(
     DenonAvrClient receiver,
     CancellationToken cancellationToken)
 {
-    Console.Write("Speaker-Index aus der Weboberfläche: ");
+    Console.Write("Speaker index from web interface: ");
     if (!int.TryParse(Console.ReadLine()?.Trim(), out var speakerIndex) || speakerIndex < 0)
     {
-        Console.WriteLine("Ungültiger Speaker-Index.");
+        Console.WriteLine("Invalid speaker index.");
         return;
     }
 
-    Console.Write("Neuer Speaker-Preset-Pegel (-12,0 bis +12,0 dB): ");
+    Console.Write("New speaker preset level (-12.0 to +12.0 dB): ");
     if (!TryParseGermanOrInvariantDouble(Console.ReadLine()?.Trim(), out var decibels))
     {
-        Console.WriteLine("Ungültiger Pegel.");
+        Console.WriteLine("Invalid level.");
         return;
     }
 
     await receiver.SetSpeakerPresetLevelAsync(speakerIndex, decibels, cancellationToken);
-    Console.WriteLine($"Speaker-Index {speakerIndex}: {decibels:0.0} dB im Speaker Preset gesetzt.");
+    Console.WriteLine($"Speaker index {speakerIndex}: {decibels:0.0} dB set in speaker preset.");
 }
 
 static async Task ShowSpeakerLevelsAsync(
@@ -248,14 +347,51 @@ static async Task ShowSpeakerLevelsAsync(
     var levels = await receiver.GetSpeakerPresetLevelsAsync(cancellationToken);
     if (levels.Count == 0)
     {
-        Console.WriteLine("Der Receiver hat keine Kanalpegel zurückgegeben.");
+        Console.WriteLine("The receiver returned no channel levels.");
         return;
     }
 
-    Console.WriteLine("Aktive Speaker-Preset-Pegel:");
+    Console.WriteLine("Active speaker preset levels:");
     foreach (var level in levels)
     {
-        Console.WriteLine($"  {(level.Channel?.ToString() ?? "Unbekannt"),-42} {level.Decibels:0.0} dB (Index {level.SpeakerIndex})");
+        Console.WriteLine($"  {(level.Channel?.ToString() ?? "Unknown"),-42} {level.Decibels:0.0} dB (Index {level.SpeakerIndex})");
+    }
+}
+
+static async Task ShowSpeakerLevelsAndDistancesAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    if (!receiver.IsFeatureAvailable(AvrFeature.SpeakerPresetLevelControl) ||
+        !receiver.IsFeatureAvailable(AvrFeature.SpeakerDistanceControl))
+    {
+        Console.WriteLine("This receiver does not support reading speaker levels and distances via HTTP.");
+        return;
+        // <-----------
+    }
+
+    var speakers = await receiver.GetConfiguredSpeakersAsync(cancellationToken);
+
+    if (speakers.Count == 0)
+    {
+        Console.WriteLine("The receiver reported no configured speakers.");
+        return;
+        // <-----------
+    }
+
+    Console.WriteLine("Speaker levels and distances (active speaker preset):");
+    Console.WriteLine($"  {"Index",5}  {"Channel",-24} {"Level",10}  {"Distance",10}");
+
+    foreach (var speaker in speakers)
+    {
+        var levelText = speaker.LevelDb is null
+            ? "-"
+            : FormatVolume(speaker.LevelDb);
+        var distanceText = speaker.DistanceMeters is { } meters
+            ? $"{meters.ToString("0.00", CultureInfo.GetCultureInfo("de-DE"))} m"
+            : "-";
+
+        Console.WriteLine($"  {speaker.SpeakerIndex,5}  {speaker.Channel,-24} {levelText,10}  {distanceText,10}");
     }
 }
 
@@ -269,15 +405,15 @@ static async Task SetSpeakerLevelFromConsoleAsync(
         return;
     }
 
-    Console.Write("Neuer Pegel (-12,0 bis +12,0 dB, Schritte von 0,5): ");
+    Console.Write("New level (-12.0 to +12.0 dB, steps of 0.5): ");
     if (!TryParseGermanOrInvariantDouble(Console.ReadLine()?.Trim(), out var decibels))
     {
-        Console.WriteLine("Ungültiger Pegel.");
+        Console.WriteLine("Invalid level.");
         return;
     }
 
     await receiver.SetSpeakerLevelAsync(channel.Value, decibels, DenonControlProtocol.Telnet, cancellationToken);
-    Console.WriteLine($"{channel.Value}: {decibels:0.0} dB gesetzt.");
+    Console.WriteLine($"{channel.Value}: {decibels:0.0} dB set.");
 }
 
 static async Task ChangeSpeakerLevelFromConsoleAsync(
@@ -296,7 +432,7 @@ static async Task ChangeSpeakerLevelFromConsoleAsync(
         increase,
         DenonControlProtocol.Telnet,
         cancellationToken);
-    Console.WriteLine($"{channel.Value}: Pegel {(increase ? "erhöht" : "verringert")}.");
+    Console.WriteLine($"{channel.Value}: Level {(increase ? "increased" : "decreased")}.");
 }
 
 static async Task SetSubwooferLevelOffFromConsoleAsync(
@@ -310,7 +446,7 @@ static async Task SetSubwooferLevelOffFromConsoleAsync(
     }
 
     await receiver.SetSpeakerLevelOffAsync(channel.Value, DenonControlProtocol.Telnet, cancellationToken);
-    Console.WriteLine($"{channel.Value}: OFF gesetzt.");
+    Console.WriteLine($"{channel.Value}: OFF set.");
 }
 
 static async Task<DenonSpeakerLevelChannel?> SelectSpeakerLevelChannelAsync(
@@ -327,19 +463,19 @@ static async Task<DenonSpeakerLevelChannel?> SelectSpeakerLevelChannelAsync(
     if (selectableLevels.Length == 0)
     {
         Console.WriteLine(subwoofersOnly
-            ? "Es ist kein konfigurierter Subwoofer-Kanal verfügbar."
-            : "Der Receiver hat keine konfigurierten Kanalpegel zurückgegeben.");
+            ? "No configured subwoofer channel is available."
+            : "The receiver returned no configured channel levels.");
         return null;
     }
 
-    Console.WriteLine("Kanal auswählen:");
+    Console.WriteLine("Select channel:");
     for (var index = 0; index < selectableLevels.Length; index++)
     {
         var level = selectableLevels[index];
         Console.WriteLine($"  {index + 1,2}  {level.Channel,-24} {FormatSpeakerLevel(level)}");
     }
 
-    Console.Write("Nummer: ");
+    Console.Write("Number: ");
     return int.TryParse(Console.ReadLine()?.Trim(), out var selection) &&
            selection >= 1 && selection <= selectableLevels.Length
         ? selectableLevels[selection - 1].Channel
@@ -356,7 +492,7 @@ static string FormatSpeakerLevel(DenonSpeakerLevel level) => level.IsOff
     ? "OFF"
     : level.Decibels is { } decibels
         ? $"{decibels.ToString("0.0", CultureInfo.GetCultureInfo("de-DE"))} dB"
-        : "unbekannt";
+        : "unknown";
 
 static async Task ControlAdditionalZonesAsync(
     string host,
@@ -364,26 +500,23 @@ static async Task ControlAdditionalZonesAsync(
     CancellationToken cancellationToken)
 {
     var telnet = new DenonTelnetClient(host);
-
     while (!cancellationToken.IsCancellationRequested)
     {
         // Z2?/Z3? can return the stored source (for example Z3SOURCE). That is
         // not a power response. The HTTP snapshot contains both independent
         // values and is therefore authoritative for the displayed state.
         await ShowAdditionalZonesAsync(receiver, cancellationToken);
-
         Console.WriteLine("""
-
-            1  Zone 2 einschalten       2  Zone 2 ausschalten
-            3  Zone 3 einschalten       4  Zone 3 ausschalten
-            5  Zone 2 lauter            6  Zone 2 leiser
-            7  Zone 3 lauter            8  Zone 3 leiser
-            V  Lautstärke direkt setzen
-            M  Mute ein-/ausschalten
-            E  Eingang auswählen
-            0  Zurück zum Hauptmenü
+            1  Switch Zone 2 on         2  Switch Zone 2 to standby
+            3  Switch Zone 3 on         4  Switch Zone 3 to standby
+            5  Zone 2 volume up         6  Zone 2 volume down
+            7  Zone 3 volume up         8  Zone 3 volume down
+            V  Set volume directly
+            M  Toggle mute
+            E  Select input
+            0  Back to main menu
             """);
-        Console.Write("Zonen-Auswahl: ");
+        Console.Write("Zone selection: ");
         var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
 
         switch (choice)
@@ -426,10 +559,9 @@ static async Task ControlAdditionalZonesAsync(
                 await SetAdditionalZoneInputAsync(telnet, receiver, cancellationToken);
                 break;
             default:
-                Console.WriteLine("Ungültige Auswahl.");
+                Console.WriteLine("Invalid selection.");
                 continue;
         }
-
         await Task.Delay(350, cancellationToken);
     }
 }
@@ -440,19 +572,19 @@ static async Task ControlAudioAndSpeakerPresetsAsync(
     CancellationToken cancellationToken)
 {
     var telnet = new DenonTelnetClient(host);
-
+    // A speaker preset switch can take up to about 15 seconds on the AVC-X6800H.
+    var presetTelnet = new DenonTelnetClient(host, TimeSpan.FromSeconds(30));
     while (!cancellationToken.IsCancellationRequested)
     {
         Console.WriteLine("""
-
-            ── Speaker-Presets und Audio ──
+            ── Speaker Presets and Audio ──
             1  Speaker Preset 1
             2  Speaker Preset 2
-            3  Surround-/Soundmodus wählen
-            4  Digitalen Eingangsdecoder wählen (Auto / PCM / DTS)
-            0  Zurück zum Hauptmenü
+            3  Select surround/sound mode
+            4  Select digital input decoder (Auto / PCM / DTS)
+            0  Back to main menu
             """);
-        Console.Write("Audio-Auswahl: ");
+        Console.Write("Audio selection: ");
         var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
 
         switch (choice)
@@ -463,18 +595,20 @@ static async Task ControlAudioAndSpeakerPresetsAsync(
                 return;
             case "1":
                 await ExecuteAudioCommandAsync(
-                    () => telnet.SelectSpeakerPresetAsync(1, cancellationToken),
+                    () => presetTelnet.SelectSpeakerPresetAsync(1, cancellationToken),
                     receiver,
                     cancellationToken,
                     800);
                 break;
+            // <-----------
             case "2":
                 await ExecuteAudioCommandAsync(
-                    () => telnet.SelectSpeakerPresetAsync(2, cancellationToken),
+                    () => presetTelnet.SelectSpeakerPresetAsync(2, cancellationToken),
                     receiver,
                     cancellationToken,
                     800);
                 break;
+            // <-----------
             case "3":
                 await SetSurroundModeAsync(telnet, receiver, cancellationToken);
                 break;
@@ -482,10 +616,92 @@ static async Task ControlAudioAndSpeakerPresetsAsync(
                 await SetDigitalInputModeAsync(telnet, receiver, cancellationToken);
                 break;
             default:
-                Console.WriteLine("Ungültige Auswahl.");
+                Console.WriteLine("Invalid selection.");
                 break;
         }
     }
+}
+
+static async Task ControlSpeakerPresetHttpAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    if (!receiver.IsFeatureAvailable(AvrFeature.SpeakerPresetSelection))
+    {
+        Console.WriteLine("This receiver does not support reading and switching the speaker preset via HTTP.");
+        return;
+        // <-----------
+    }
+
+    while (!cancellationToken.IsCancellationRequested)
+    {
+        Console.WriteLine("""
+            ── Speaker Preset (HTTP, Port 11080) ──
+            1  Read active preset
+            2  Switch preset (waits for confirmation, then stops test tone)
+            0  Back to main menu
+            """);
+        Console.Write("Preset selection: ");
+        var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
+
+        switch (choice)
+        {
+            case "0":
+            case "":
+            case null:
+                return;
+            // <-----------
+            case "1":
+                await ShowActiveSpeakerPresetAsync(receiver, cancellationToken);
+                break;
+            // <-----------
+            case "2":
+                await SelectSpeakerPresetFromConsoleAsync(receiver, cancellationToken);
+                break;
+            // <-----------
+            default:
+                Console.WriteLine("Invalid selection.");
+                break;
+                // <-----------
+        }
+    }
+}
+
+static async Task ShowActiveSpeakerPresetAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    var stopwatch = Stopwatch.StartNew();
+    var preset = await receiver.GetActiveSpeakerPresetAsync(cancellationToken);
+    stopwatch.Stop();
+    Console.WriteLine($"Active speaker preset: {preset} ({stopwatch.ElapsedMilliseconds} ms)");
+}
+
+static async Task SelectSpeakerPresetFromConsoleAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    Console.Write($"Target preset (1 to {receiver.SpeakerPresetCount}): ");
+    if (!int.TryParse(Console.ReadLine()?.Trim(), out var preset) ||
+        preset < 1 ||
+        preset > receiver.SpeakerPresetCount)
+    {
+        Console.WriteLine("Invalid preset.");
+        return;
+        // <-----------
+    }
+
+    if (!Confirm("Switching changes the receiver, can take up to about 15 seconds and briefly interrupt audio. Continue?"))
+    {
+        return;
+        // <-----------
+    }
+
+    Console.WriteLine($"Switching to preset {preset} …");
+    var stopwatch = Stopwatch.StartNew();
+    await receiver.SelectSpeakerPresetAsync(preset, cancellationToken: cancellationToken);
+    stopwatch.Stop();
+    Console.WriteLine($"Preset {preset} confirmed after {stopwatch.ElapsedMilliseconds} ms. Test tone stopped.");
 }
 
 static async Task SetSurroundModeAsync(
@@ -501,7 +717,7 @@ static async Task SetSurroundModeAsync(
         5  Multi Ch Stereo
         6  Pure Direct
         """);
-    Console.Write("Soundmodus: ");
+    Console.Write("Sound mode: ");
     var mode = Console.ReadLine()?.Trim() switch
     {
         "1" => "Auto",
@@ -515,7 +731,7 @@ static async Task SetSurroundModeAsync(
 
     if (mode is null)
     {
-        Console.WriteLine("Ungültige Auswahl.");
+        Console.WriteLine("Invalid selection.");
         return;
     }
 
@@ -531,7 +747,7 @@ static async Task SetDigitalInputModeAsync(
     DenonAvrClient receiver,
     CancellationToken cancellationToken)
 {
-    Console.Write("Digitaler Eingangsdecoder [A]uto / [P]CM / [D]TS: ");
+    Console.Write("Digital input decoder [A]uto / [P]CM / [D]TS: ");
     var mode = Console.ReadLine()?.Trim().ToUpperInvariant() switch
     {
         "A" => "Auto",
@@ -542,7 +758,7 @@ static async Task SetDigitalInputModeAsync(
 
     if (mode is null)
     {
-        Console.WriteLine("Bitte A, P oder D eingeben.");
+        Console.WriteLine("Please enter A, P or D.");
         return;
     }
 
@@ -562,7 +778,7 @@ static async Task ExecuteAudioCommandAsync(
     try
     {
         var response = await command();
-        Console.WriteLine($"Receiver-Antwort: {response}");
+        Console.WriteLine($"Receiver response: {response}");
         await Task.Delay(settleDelayMilliseconds, cancellationToken);
         await ShowStatusAsync(receiver, cancellationToken);
     }
@@ -577,8 +793,7 @@ static async Task ShowAdditionalZonesAsync(
     CancellationToken cancellationToken)
 {
     var state = await receiver.UpdateAsync(cancellationToken);
-
-    Console.WriteLine("\nAktueller Zonenstatus:");
+    Console.WriteLine("\nCurrent zone status:");
     ShowAdditionalZone("Zone 2", state.Zone2);
     ShowAdditionalZone("Zone 3", state.Zone3);
 }
@@ -592,10 +807,10 @@ static async Task SetAdditionalZoneVolumeAsync(
         return;
     }
 
-    Console.Write("Lautstärke in dB (-80,0 bis +18,0): ");
+    Console.Write("Volume in dB (-80.0 to +18.0): ");
     if (!TryParseGermanOrInvariantDouble(Console.ReadLine(), out var volume))
     {
-        Console.WriteLine("Ungültige Zahl.");
+        Console.WriteLine("Invalid number.");
         return;
     }
 
@@ -625,16 +840,15 @@ static async Task SetAdditionalZoneMuteAsync(
         return;
     }
 
-    Console.Write("Mute [E]in/[A]us: ");
+    Console.Write("Mute [E]nable/[D]isable: ");
     var selection = Console.ReadLine()?.Trim().ToUpperInvariant();
-    if (selection is not ("E" or "A"))
+    if (selection is not ("E" or "D"))
     {
-        Console.WriteLine("Bitte E oder A eingeben.");
+        Console.WriteLine("Please enter E or D.");
         return;
     }
 
     var muted = selection.Equals("E", StringComparison.OrdinalIgnoreCase);
-
     if (zone == 2)
     {
         await telnet.SetZone2MuteAsync(muted, cancellationToken);
@@ -656,13 +870,13 @@ static async Task SetAdditionalZoneInputAsync(
     }
 
     var inputs = await receiver.RefreshInputsAsync(cancellationToken);
-    Console.WriteLine("Verfügbare Eingänge:");
+    Console.WriteLine("Available inputs:");
     for (var index = 0; index < inputs.Count; index++)
     {
         Console.WriteLine($"  {index + 1,2}: {inputs[index]}");
     }
 
-    Console.Write("Nummer oder Denon-Protokollname: ");
+    Console.Write("Number or Denon protocol name: ");
     var selection = Console.ReadLine()?.Trim();
     if (string.IsNullOrWhiteSpace(selection))
     {
@@ -689,13 +903,12 @@ static bool TryReadZone(out int zone)
     Console.Write("Zone [2/3]: ");
     var text = Console.ReadLine()?.Trim();
     zone = text is "2" or "3" ? int.Parse(text) : 0;
-
     if (zone != 0)
     {
         return true;
     }
 
-    Console.WriteLine("Bitte nur 2 oder 3 eingeben.");
+    Console.WriteLine("Please enter only 2 or 3.");
     return false;
 }
 
@@ -714,17 +927,16 @@ static async Task ShowStatusAsync(
     CancellationToken cancellationToken)
 {
     var state = await receiver.UpdateAsync(cancellationToken);
-
-    Console.WriteLine("\nAktueller Main-Zone-Status:");
+    Console.WriteLine("\nCurrent Main Zone status:");
     Console.WriteLine($"  Power:       {state.Power}");
-    Console.WriteLine($"  Eingang:     {state.Input ?? "unbekannt"}");
-    Console.WriteLine($"  Lautstärke:  {FormatVolume(state.VolumeDb)}");
+    Console.WriteLine($"  Input:       {state.Input ?? "unknown"}");
+    Console.WriteLine($"  Volume:      {FormatVolume(state.VolumeDb)}");
     Console.WriteLine($"  Mute:        {FormatMute(state.IsMuted)}");
-    Console.WriteLine($"  Audio-Eingang:{state.Audio?.InputMode ?? "unbekannt"}");
-    Console.WriteLine($"  Audioformat: {state.Audio?.AudioFormat ?? "unbekannt"}");
-    Console.WriteLine($"  Soundmodus:  {state.Audio?.SoundMode ?? "unbekannt"}");
-    Console.WriteLine($"  Samplerate:  {state.Audio?.SampleRate ?? "unbekannt"}");
-    Console.WriteLine($"  Lautsprecher:{FormatSpeakers(state.Audio?.ActiveSpeakers)}");
+    Console.WriteLine($"  Audio input: {state.Audio?.InputMode ?? "unknown"}");
+    Console.WriteLine($"  Audio format:{state.Audio?.AudioFormat ?? "unknown"}");
+    Console.WriteLine($"  Sound mode:  {state.Audio?.SoundMode ?? "unknown"}");
+    Console.WriteLine($"  Sample rate: {state.Audio?.SampleRate ?? "unknown"}");
+    Console.WriteLine($"  Speakers:    {FormatSpeakers(state.Audio?.ActiveSpeakers)}");
     ShowAdditionalZone("Zone 2", state.Zone2);
     ShowAdditionalZone("Zone 3", state.Zone3);
 }
@@ -733,7 +945,7 @@ static void ShowAdditionalZone(string name, DenonAvrNet.Models.DenonZoneState? z
 {
     if (zone is not null)
     {
-        Console.WriteLine($"  {name}:       {zone.Power}, {zone.Input ?? "unbekannt"}, {FormatVolume(zone.VolumeDb)}, Mute {FormatMute(zone.IsMuted)}");
+        Console.WriteLine($"  {name}:       {zone.Power}, {zone.Input ?? "unknown"}, {FormatVolume(zone.VolumeDb)}, Mute {FormatMute(zone.IsMuted)}");
     }
 }
 
@@ -741,12 +953,11 @@ static async Task SetVolumeAsync(
     DenonAvrClient receiver,
     CancellationToken cancellationToken)
 {
-    Console.Write("Lautstärke in dB (-80,0 bis +18,0): ");
+    Console.Write("Volume in dB (-80.0 to +18.0): ");
     var text = Console.ReadLine();
-
     if (!TryParseGermanOrInvariantDouble(text, out var volume))
     {
-        Console.WriteLine("Ungültige Zahl.");
+        Console.WriteLine("Invalid number.");
         return;
     }
 
@@ -768,14 +979,13 @@ static async Task SetInputAsync(
     CancellationToken cancellationToken)
 {
     var inputs = await receiver.RefreshInputsAsync(cancellationToken);
-
-    Console.WriteLine("Verfügbare Eingänge:");
+    Console.WriteLine("Available inputs:");
     for (var index = 0; index < inputs.Count; index++)
     {
         Console.WriteLine($"  {index + 1,2}: {inputs[index]}");
     }
 
-    Console.Write("Nummer oder Denon-Protokollname: ");
+    Console.Write("Number or Denon protocol name: ");
     var selection = Console.ReadLine()?.Trim();
     if (string.IsNullOrWhiteSpace(selection))
     {
@@ -799,34 +1009,31 @@ static async Task RunReadOnlyDiagnosticAsync(
 {
     const int repetitions = 5;
     Console.WriteLine(
-        $"\nStarte {repetitions} reine Statusabfragen; es werden keine Steuerbefehle gesendet.");
-
+        $"\nStarting {repetitions} read-only status queries; no control commands will be sent.");
     for (var attempt = 1; attempt <= repetitions; attempt++)
     {
         var stopwatch = Stopwatch.StartNew();
         var state = await receiver.UpdateAsync(cancellationToken);
         stopwatch.Stop();
-
         Console.WriteLine(
             $"  {attempt}/{repetitions}  {stopwatch.ElapsedMilliseconds,4} ms | " +
-            $"Power {state.Power} | Eingang {state.Input ?? "?"} | " +
-            $"Lautstärke {FormatVolume(state.VolumeDb)} | " +
+            $"Power {state.Power} | Input {state.Input ?? "?"} | " +
+            $"Volume {FormatVolume(state.VolumeDb)} | " +
             $"Audio {state.Audio?.AudioFormat ?? "?"} | " +
-            $"Lautsprecher{FormatSpeakers(state.Audio?.ActiveSpeakers)}");
-
+            $"Speakers {FormatSpeakers(state.Audio?.ActiveSpeakers)}");
         if (attempt < repetitions)
         {
             await Task.Delay(500, cancellationToken);
         }
     }
 
-    Console.WriteLine("Nur-Lese-Diagnose abgeschlossen.");
+    Console.WriteLine("Read-only diagnostic completed.");
 }
 
 static bool Confirm(string question)
 {
-    Console.Write($"{question} [j/N]: ");
-    return string.Equals(Console.ReadLine()?.Trim(), "j", StringComparison.OrdinalIgnoreCase);
+    Console.Write($"{question} [y/N]: ");
+    return string.Equals(Console.ReadLine()?.Trim(), "y", StringComparison.OrdinalIgnoreCase);
 }
 
 static bool TryParseGermanOrInvariantDouble(string? text, out double value) =>
@@ -834,17 +1041,111 @@ static bool TryParseGermanOrInvariantDouble(string? text, out double value) =>
     double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
 
 static string FormatVolume(double? volume) => volume is null
-    ? "unbekannt"
+    ? "unknown"
     : $"{volume.Value.ToString("0.0", CultureInfo.GetCultureInfo("de-DE"))} dB";
 
 static string FormatMute(bool? muted) => muted switch
 {
-    true => "Ein",
-    false => "Aus",
-    null => "unbekannt"
+    true => "On",
+    false => "Off",
+    null => "unknown"
 };
 
 static string FormatSpeakers(IReadOnlyList<string>? speakers) =>
     speakers is null || speakers.Count == 0
-        ? " unbekannt/keine"
+        ? " unknown/none"
         : $" {string.Join(", ", speakers)}";
+
+static void ControlReceiverLogger()
+{
+    while (true)
+    {
+        Console.WriteLine($"""
+            ── Receiver Log ──
+            Path:    {ReceiverLogger.FilePath ?? "(not set)"}
+            Logging: {(ReceiverLogger.Enabled ? "enabled" : "disabled")}
+
+            1  Set log file path
+            2  Enable logging
+            3  Disable logging
+            4  Clear log file (overwrite with blank)
+            0  Back to main menu
+            """);
+        Console.Write("Log selection: ");
+
+        var choice = Console.ReadLine()?.Trim().ToUpperInvariant();
+
+        try
+        {
+            switch (choice)
+            {
+                case "0":
+                case "":
+                case null:
+                    return;
+                // <-----------
+                case "1":
+                    Console.Write("Log file path: ");
+                    var path = Console.ReadLine()?.Trim();
+
+                    if (string.IsNullOrWhiteSpace(path))
+                    {
+                        Console.WriteLine("No path entered.");
+                        break;
+                        // <-----------
+                    }
+
+                    ReceiverLogger.FilePath = path;
+                    Console.WriteLine($"Log path set: {ReceiverLogger.FilePath}");
+                    break;
+                // <-----------
+                case "2":
+                    if (ReceiverLogger.FilePath is null)
+                    {
+                        Console.WriteLine("Set a log file path first.");
+                        break;
+                        // <-----------
+                    }
+
+                    ReceiverLogger.Enabled = true;
+                    Console.WriteLine("Logging enabled.");
+                    break;
+                // <-----------
+                case "3":
+                    ReceiverLogger.Enabled = false;
+                    Console.WriteLine("Logging disabled.");
+                    break;
+                // <-----------
+                case "4":
+                    if (ReceiverLogger.FilePath is null)
+                    {
+                        Console.WriteLine("Set a log file path first.");
+                        break;
+                        // <-----------
+                    }
+
+                    if (Confirm("Really clear the log file?"))
+                    {
+                        ReceiverLogger.Clear();
+                        Console.WriteLine("Log file cleared.");
+                    }
+
+                    break;
+                // <-----------
+                default:
+                    Console.WriteLine("Invalid selection.");
+                    break;
+                    // <-----------
+            }
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or
+            IOException or
+            NotSupportedException or
+            UnauthorizedAccessException or
+            InvalidOperationException)
+        {
+            Console.Error.WriteLine($"\nLog error: {exception.Message}");
+        }
+    }
+}

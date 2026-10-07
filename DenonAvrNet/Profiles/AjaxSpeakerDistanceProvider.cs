@@ -9,7 +9,6 @@ namespace DenonAvrNet.Profiles;
 internal sealed class AjaxSpeakerDistanceProvider : ISpeakerDistanceProvider
 {
     private const int SpeakerSetupHttpPort = 11080;
-    private const double FeetToMeters = 0.3048;
 
     public async Task<DenonSpeakerDistanceConfiguration> GetDistancesAsync(
         DenonProfileContext context,
@@ -32,9 +31,8 @@ internal sealed class AjaxSpeakerDistanceProvider : ISpeakerDistanceProvider
 
         var unit = unitValue switch
         {
-            1 => DenonSpeakerDistanceUnit.Feet,
-            2 => DenonSpeakerDistanceUnit.Meters,
-
+            1 => DenonSpeakerDistanceUnit.Meters,
+            2 => DenonSpeakerDistanceUnit.Feet,
             _ => throw new InvalidDataException(
                 $"Unbekannte Denon-Distanzeinheit: {unitValue}.")
         };
@@ -58,17 +56,16 @@ internal sealed class AjaxSpeakerDistanceProvider : ISpeakerDistanceProvider
                 item.RawValue is not null)
             .Select(item => new DenonSpeakerDistance(
                 item.Index!.Value,
-                RawToMeters(
-                    item.RawValue!.Value,
-                    unit)))
+                RawToMeters(item.RawValue!.Value)))
             .OrderBy(distance => distance.SpeakerIndex)
             .ToArray();
 
         return new DenonSpeakerDistanceConfiguration(
             unit,
-            RawToMeters(rawStep, unit),
+            RawToMeters(rawStep),
             ratio,
             speakers);
+        // <-----------
     }
 
     public async Task SetDistanceAsync(
@@ -77,13 +74,13 @@ internal sealed class AjaxSpeakerDistanceProvider : ISpeakerDistanceProvider
         double meters,
         CancellationToken cancellationToken)
     {
-        var configuration = await GetDistancesAsync(
+        // The receiver reports raw values as meters x 100 in both unit modes. The read is kept
+        // so the response is still validated before writing.
+        _ = await GetDistancesAsync(
             context,
             cancellationToken).ConfigureAwait(false);
 
-        var rawValue = MetersToRaw(
-            meters,
-            configuration.ReceiverUnit);
+        var rawValue = MetersToRaw(meters);
 
         _ = await context.HttpTransport.GetStringAsync(
             context.Host,
@@ -94,30 +91,13 @@ internal sealed class AjaxSpeakerDistanceProvider : ISpeakerDistanceProvider
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static double RawToMeters(
-        int rawValue,
-        DenonSpeakerDistanceUnit unit)
-    {
-        var displayValue = rawValue / 100.0;
+    private static double RawToMeters(int rawValue) =>
+        rawValue / 100.0;
 
-        return unit == DenonSpeakerDistanceUnit.Feet
-            ? displayValue * FeetToMeters
-            : displayValue;
-    }
-
-    private static int MetersToRaw(
-        double meters,
-        DenonSpeakerDistanceUnit unit)
-    {
-        var displayValue =
-            unit == DenonSpeakerDistanceUnit.Feet
-                ? meters / FeetToMeters
-                : meters;
-
-        return (int)Math.Round(
-            displayValue * 100.0,
+    private static int MetersToRaw(double meters) =>
+        (int)Math.Round(
+            meters * 100.0,
             MidpointRounding.AwayFromZero);
-    }
 
     private static int ParseRequiredInt(
         XElement? element,
