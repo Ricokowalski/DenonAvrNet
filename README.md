@@ -25,24 +25,26 @@ The library was developed primarily with a **Denon AVC-X6800H** and its `0301` c
   - Sample rate
   - Active speaker channels
 - Turn the Main Zone on and off
-- Increase, decrease, or set volume absolutely in dB
+- Increase/decrease volume or set it on Denon's absolute `0..98` scale; explicit dB setters are also available
 - Enable and disable mute
 - Select an input by its visible Denon name
 - Switch speaker preset 1 or 2
 - Select surround mode: Auto, Stereo, Dolby Surround, DTS Neural:X, Multi Ch Stereo, or Pure Direct
 - Set the digital input decoder to Auto, PCM, or DTS
-- Control Zone 2 and Zone 3 through Telnet port 23:
+- Control Zone 2 and Zone 3 through the unified HTTP/Telnet API:
   - Turn on/off
-  - Increase, decrease, or set volume absolutely in dB
+  - Increase/decrease volume or set it on Denon's absolute `0..98` scale; explicit dB setters are also available
   - Enable/disable mute
   - Select input
 - Read and control the temporary channel levels of the current surround mode through Telnet (`CV`):
   - Read individual channels or all configured channels (`CV?` / `CVEND`)
   - Set levels from -12.0 to +12.0 dB or change them in steps
   - Set subwoofer channels to OFF and reset all channel levels to Denon factory values
-- Read and set the actual levels of the active speaker preset in the current web interface through HTTP port 11080
+- Read and set the actual levels of the active speaker preset through the receiver-specific speaker web interface (X6800H: HTTP/11080; X6700H: HTTPS/10443)
 - Expose the number of speaker presets known for the detected receiver profile
 - Capture and restore persistent speaker-preset level snapshots
+- Read and switch the active speaker preset through the receiver-specific speaker web interface
+- Combine persistent speaker levels and distances into configured physical speakers with `GetConfiguredSpeakersAsync()`
 - Read and set persistent speaker distances; public distance values are normalized to meters
 - Persistent status monitoring for headless operation:
   - Telnet events are received immediately
@@ -107,7 +109,8 @@ Console.WriteLine($"Active channels: {state.Audio?.ActiveSpeakerChannels ?? Spea
 await receiver.PowerOnAsync();
 await receiver.VolumeUpAsync();
 await receiver.VolumeDownAsync();
-await receiver.SetVolumeAsync(-40.0);
+await receiver.SetVolumeAsync(40.0);       // Denon absolute scale
+await receiver.SetVolumeDbAsync(-40.0);    // explicit dB alternative
 await receiver.SetMuteAsync(true);
 await receiver.SetMuteAsync(false);
 await receiver.SetInputAsync("Media Player");
@@ -119,7 +122,7 @@ The regular Main Zone methods (`PowerOnAsync`, `SetVolumeAsync`, `SetMuteAsync`,
 
 ```csharp
 // Default: Auto. After InitializeAsync, HTTP is used; without HTTP initialization, Telnet is used.
-await receiver.SetVolumeAsync(-25.0);
+await receiver.SetVolumeAsync(55.0); // 55 on the Denon scale = -25 dB
 
 // Explicitly send one command over Telnet:
 await receiver.SetInputAsync("CBL/SAT", DenonControlProtocol.Telnet);
@@ -132,7 +135,7 @@ With `Auto`, HTTP is tried after successful HTTP initialization. If the HTTP con
 
 ### Web-interface speaker setup
 
-The values under **Setup → Speakers → Levels** are not the same as Telnet `CV` values. For the AVC-X6800H, the library reads and writes these speaker-preset values through the separate web interface on port `11080`:
+The values under **Setup → Speakers → Levels** are not the same as Telnet `CV` values. The X6800H and X6700H profiles use Denon's AJAX speaker-setup interface, but with model-specific transport details: the X6800H uses HTTP on port `11080`, while the X6700H uses HTTPS on port `10443`. The X6700H's local device certificate is accepted only for this explicitly profiled speaker-setup connection.
 
 ```csharp
 Console.WriteLine($"Speaker presets: {receiver.SpeakerPresetCount}");
@@ -147,7 +150,7 @@ await receiver.RestoreSpeakerLevelSnapshotAsync(snapshot);
 
 `SpeakerPresetCount` comes from the selected receiver profile. The X6800H and X6700H profiles currently report two presets; legacy and unknown profiles report zero. `SpeakerIndex` is the web-interface index provided by the receiver. The sample menu item `L → 1` shows current values together with their indices; `L → H` sets a value.
 
-The same X6800H setup interface can read and write persistent speaker distances:
+The same profile-specific speaker setup interface can read and write persistent speaker distances on both the X6800H and X6700H:
 
 ```csharp
 var distances = await receiver.GetSpeakerDistancesAsync();
@@ -159,7 +162,19 @@ foreach (var speaker in distances.Speakers)
 await receiver.SetSpeakerDistanceAsync(speakerIndex: 0, meters: 3.25);
 ```
 
-Public distance values are always expressed in meters. If the receiver UI is configured for feet, the profile converts the values when reading and writing. The test tone is not implemented yet: only the web-interface stop command is confirmed, not an unambiguous start command.
+Public distance values are always expressed in meters. The captured X6700H interface reports raw distance values as meters × 100 even when the receiver display unit is configurable. The test tone is not implemented as a public feature; the X6800H profile retains its confirmed stop command, while the X6700H preset path does not send an unverified test-tone command.
+
+
+Configured speakers are intentionally different from currently active audio channels. `GetConfiguredSpeakersAsync()` joins the persistent Levels and Distances pages by `SpeakerChannel` and returns physical speakers configured in the active preset. `state.Audio.ActiveSpeakerChannels`, by contrast, describes channels currently active in the audio signal and must not be used as a configuration filter.
+
+```csharp
+var configured = await receiver.GetConfiguredSpeakersAsync();
+foreach (var speaker in configured)
+    Console.WriteLine($"{speaker.Channel}: {speaker.LevelDb:0.0} dB, {speaker.DistanceMeters:0.00} m");
+
+var preset = await receiver.GetActiveSpeakerPresetAsync();
+await receiver.SelectSpeakerPresetAsync(preset == 1 ? 2 : 1);
+```
 
 ### Feature and device capabilities
 
@@ -222,7 +237,8 @@ Mapping is case-insensitive. Known protocol names such as `MPLAY` or `SAT/CBL` c
 | `IsPoweredOn` | Simplified Boolean power status |
 | `Power` | Unchanged receiver power text |
 | `Input` | Current Denon input protocol name |
-| `VolumeDb` | Master volume in dB or `null` |
+| `Volume` | Master volume on Denon's absolute `0..98` scale or `null` |
+| `VolumeDb` | The same master volume in relative dB or `null` |
 | `IsMuted` | Mute status or `null` |
 | `AvailableInputs` | Standard inputs that are not disabled |
 | `Audio` | Optional extended audio information |
@@ -273,7 +289,7 @@ catch (OperationCanceledException)
 | `DenonProtocolException` | XML or expected Denon status values are invalid or missing |
 | `HttpRequestException` | HTTP or network error during a request |
 | `InvalidOperationException` | The client has not been initialized yet |
-| `ArgumentOutOfRangeException` | Volume outside `-80.0` to `+18.0 dB` |
+| `ArgumentOutOfRangeException` | Absolute volume outside `0.0..98.0`, dB volume outside `-80.0..+18.0 dB`, or another numeric argument outside its supported range |
 
 ## Raw commands
 
@@ -313,7 +329,7 @@ Further details are available in the [API documentation](docs/API.md), [protocol
 - Renamed inputs are not yet mapped separately to their custom display names.
 - Events are received through a permanently open Telnet connection; custom event handlers should not perform long-running work.
 - Receiver-specific web features use an internal profile selected during `InitializeAsync()`. The selected profile is exposed as `ReceiverProfileId` for diagnostics.
-- Speaker-preset levels and speaker distances are currently implemented for the AVC-X6800H AJAX API only. The AVC-X6700H profile knows that the receiver has two speaker presets, but its model-specific level/distance web API is intentionally unsupported until the exact requests and responses have been captured. Legacy and unknown profiles currently report zero known presets and no web speaker-setup support.
+- Speaker-preset levels, speaker distances, and HTTP speaker-preset selection are implemented for both the AVC-X6800H and AVC-X6700H through receiver-specific AJAX profiles. The X6800H uses HTTP/11080; the X6700H uses HTTPS/10443 and an explicitly scoped local-device certificate exception. Legacy and unknown profiles currently report zero known presets and no web speaker-setup support.
 
 ## Reference and license
 

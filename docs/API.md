@@ -1,4 +1,4 @@
-﻿# API documentation
+# API documentation
 
 This document describes the publicly usable types and intended lifecycle of `DenonAvrNet`.
 
@@ -17,13 +17,14 @@ using DenonAvrNet;
 
 using var receiver = new DenonAvrClient(
     "10.37.0.190",
-    requestTimeout: TimeSpan.FromSeconds(5));
+    requestTimeout: TimeSpan.FromSeconds(30));
 
 await receiver.InitializeAsync();
 var capabilities = await receiver.ProbeReceiverCapabilitiesAsync();
 
 var before = await receiver.UpdateAsync();
-await receiver.SetVolumeAsync(-35.5);
+await receiver.SetVolumeAsync(44.5);      // Denon scale
+await receiver.SetVolumeDbAsync(-35.5);   // same level in dB
 await Task.Delay(350);
 var after = await receiver.UpdateAsync();
 ```
@@ -38,7 +39,7 @@ new DenonAvrClient(string host, TimeSpan? requestTimeout = null)
 
 `host` can be an IP address, host name, or HTTP/HTTPS address without a required command path. For a complete address, the client uses only the host portion. Status and device queries use HTTP/XML; Main Zone control commands can use HTTP or Telnet.
 
-The default `requestTimeout` is five seconds. The internal connection setup and `HttpClient` use the same time limit.
+The default `requestTimeout` is 30 seconds. The internal connection setup and `HttpClient` use the same time limit.
 
 ### Properties
 
@@ -72,8 +73,8 @@ Denon web interfaces are not consistent across model generations. A receiver can
 
 | Profile ID | Selected for | Presets | Speaker setup provider |
 | --- | --- | ---: | --- |
-| `avc-x6800h` | Model name containing `X6800` | 2 | Speaker-preset levels and distances implemented through AJAX on port `11080` |
-| `avc-x6700h` | Model name containing `X6700` | 2 | Level/distance access deliberately unsupported until its exact requests and responses are implemented |
+| `avc-x6800h` | Model name containing `X6800` | 2 | Levels, distances, and preset selection through AJAX over HTTP/11080 |
+| `avc-x6700h` | Model name containing `X6700` | 2 | Levels, distances, and preset selection through AJAX over HTTPS/10443 |
 | `legacy-goform` | Other receivers initialized through port `80` | 0 | Deliberately unsupported until implemented for that receiver family |
 | `unknown` | Any other receiver | 0 | Deliberately unsupported |
 
@@ -123,11 +124,11 @@ Main Zone methods use a shared API. Without a protocol argument, `PreferredContr
 
 ```csharp
 await receiver.PowerOnAsync();
-await receiver.SetVolumeAsync(-30.0);
+await receiver.SetVolumeAsync(50.0); // -30 dB
 await receiver.SetInputAsync("CBL/SAT");
 
 // Force a single command:
-await receiver.SetVolumeAsync(-25.0, DenonControlProtocol.Telnet);
+await receiver.SetVolumeAsync(55.0, DenonControlProtocol.Telnet); // -25 dB
 
 // Use Telnet for all following Main Zone commands:
 receiver.PreferredControlProtocol = DenonControlProtocol.Telnet;
@@ -135,12 +136,13 @@ receiver.PreferredControlProtocol = DenonControlProtocol.Telnet;
 
 `Auto` initially uses HTTP after a successful `InitializeAsync()`. If initialization has not run yet, Telnet is used. If an HTTP control command throws `HttpRequestException` (for example HTTP 403), `Auto` falls back to Telnet once. Explicitly selected `Http` or `Telnet` does not fall back.
 
-Volume values use one public representation across all transports and zones: **decibels from -80.0 through +18.0 dB in 0.5 dB steps**. Denon's Telnet absolute scale (`00`...`98`, where `80` means `0 dB`) is converted internally and never needs to be handled by library consumers. Mute is always a separate boolean operation and is never represented by a volume value.
+The standard volume setters use Denon's absolute **0.0 through 98.0** scale in 0.5-step increments for Main Zone, Zone 2, and Zone 3. `80.0` corresponds to `0 dB`, `40.0` to `-40 dB`, and `98.0` to `+18 dB`. Explicit `SetVolumeDbAsync()`, `SetZone2VolumeDbAsync()`, and `SetZone3VolumeDbAsync()` methods are available when an application prefers the relative dB representation. Mute is always a separate boolean operation and is never represented by a volume value.
 
 ```csharp
-await receiver.SetVolumeAsync(-30.0);
-await receiver.SetZone2VolumeAsync(-40.0);
-await receiver.SetZone3VolumeAsync(-45.5, DenonControlProtocol.Telnet);
+await receiver.SetVolumeAsync(50.0); // -30 dB
+await receiver.SetZone2VolumeAsync(40.0);
+await receiver.SetZone3VolumeAsync(34.5, DenonControlProtocol.Telnet);
+await receiver.SetZone3VolumeDbAsync(-45.5);
 await receiver.SetZone2MuteAsync(true);
 ```
 
@@ -182,7 +184,7 @@ The Main Zone can be used directly, although applications should normally prefer
 ```csharp
 var telnet = new DenonTelnetClient("10.37.0.190");
 await telnet.PowerOnAsync();
-await telnet.SetVolumeAsync(-30.0);
+await telnet.SetVolumeAsync(50.0); // Denon scale = -30 dB
 await telnet.SetMuteAsync(false);
 await telnet.SetInputAsync("Media Player");
 ```
@@ -191,14 +193,14 @@ await telnet.SetInputAsync("Media Player");
 var zones = new DenonTelnetClient("10.37.0.190");
 
 await zones.SetZone2PowerAsync(true);
-await zones.SetZone2VolumeAsync(-35.5);
+await zones.SetZone2VolumeAsync(44.5); // Denon scale = -35.5 dB
 await zones.SetZone2MuteAsync(false);
 await zones.SetZone2InputAsync("MEDIA PLAYER"); // Sends Z2MPLAY.
 
 await zones.SetZone3InputAsync("CBL/SAT");      // Sends Z3SAT/CBL.
 ```
 
-`SetZone2VolumeAsync()` and `SetZone3VolumeAsync()` accept values from `-80.0` to `+18.0 dB` and round to half-decibel steps.
+`SetZone2VolumeAsync()` and `SetZone3VolumeAsync()` accept Denon absolute values from `0.0` to `98.0` and round to half-step increments. Use the corresponding `...VolumeDbAsync()` methods for `-80.0` through `+18.0 dB`.
 
 ### Temporary speaker-channel levels through Telnet
 
@@ -232,9 +234,9 @@ await receiver.SetSpeakerLevelAsync(
 
 `GetSpeakerLevelsAsync()` sends `CV?` and waits for the final `CVEND` message. It returns only channels that are present in the receiver's current speaker configuration. `SetSpeakerLevelAsync()` accepts `-12.0` to `+12.0 dB` and rounds to 0.5 dB steps. An `OFF` level is valid only for subwoofer channels. `ResetSpeakerLevelsToFactoryDefaultsAsync()` resets levels to Denon factory values; the library does not store or restore a prior session snapshot.
 
-### Web-interface speaker-preset levels (HTTP)
+### Web-interface speaker-preset levels (HTTP/HTTPS)
 
-On the AVC-X6800H, actual values of the active speaker preset are read and set through the separate web interface on port `11080`. This port is deliberately independent from `HttpPort` (usually `8080`) for the normal HTTP/XML API.
+Actual values of the active speaker preset are read and set through a receiver-specific AJAX speaker interface that is deliberately independent from `HttpPort` (usually `8080`) for the normal HTTP/XML API. The X6800H uses HTTP on port `11080`; the X6700H uses HTTPS on port `10443`. The X6700H profile explicitly accepts the receiver's local, untrusted device certificate only for this speaker-setup transport.
 
 ```csharp
 var presetLevels = await receiver.GetSpeakerPresetLevelsAsync();
@@ -247,9 +249,9 @@ foreach (var level in presetLevels)
 await receiver.SetSpeakerPresetLevelAsync(speakerIndex: 2, decibels: -3.5);
 ```
 
-`GetSpeakerPresetLevelsAsync()` reads `/ajax/speakers/get_config?type=5`. `SetSpeakerPresetLevelAsync()` sends the value in tenths of a dB (`-35` for `-3.5 dB`) to `/ajax/speakers/set_config?type=20`. `SpeakerIndex` is the web-interface index supplied by the receiver, not a `DenonSpeakerLevelChannel` enum value.
+`GetSpeakerPresetLevelsAsync()` reads `/ajax/speakers/get_config?type=5`. Values are expressed in tenths of a dB (`-35` for `-3.5 dB`). On the X6800H, writes use the captured `type=20` payload; on the X6700H, writes use `set_config?type=5` with a `<List><Speaker ...>...</Speaker></List>` payload. `SpeakerIndex` is the web-interface index supplied by the receiver, not a `DenonSpeakerLevelChannel` enum value.
 
-These methods are currently available only when `ReceiverProfileId` is `avc-x6800h`. On an X6700H, an older GoForm receiver, or an unknown profile, they throw `NotSupportedException` with an explanation instead of sending X6800H-specific requests to an incompatible AVR. Once a receiver's Speaker Levels web requests have been captured, its profile receives a dedicated `ISpeakerPresetLevelProvider` implementation.
+These methods are available for `avc-x6800h` and `avc-x6700h`. Legacy GoForm and unknown profiles still throw `NotSupportedException` instead of sending a receiver-specific AJAX request to an incompatible AVR.
 
 The selected profile also exposes its known preset count through `SpeakerPresetCount`. This is profile metadata rather than a live query to the AVR. The current X6800H and X6700H profiles report `2`; legacy and unknown profiles report `0`.
 
@@ -268,9 +270,9 @@ await receiver.RestoreSpeakerLevelSnapshotAsync();
 
 A snapshot records its creation time, receiver profile ID, and all persistent levels. Restoring a snapshot created for a different receiver profile throws `InvalidOperationException`. The convenience restore overload also throws if no snapshot has previously been saved.
 
-### Web-interface speaker distances (HTTP)
+### Web-interface speaker distances (HTTP/HTTPS)
 
-On the AVC-X6800H, persistent speaker distances of the active speaker preset are available through the same port `11080` setup interface:
+Persistent speaker distances of the active speaker preset are available through the same profile-specific AJAX setup interface on the X6800H and X6700H:
 
 ```csharp
 var configuration = await receiver.GetSpeakerDistancesAsync();
@@ -284,9 +286,9 @@ foreach (var speaker in configuration.Speakers)
 await receiver.SetSpeakerDistanceAsync(speakerIndex: 0, meters: 3.25);
 ```
 
-`GetSpeakerDistancesAsync()` reads `/ajax/speakers/get_config?type=4`. The public API always returns `DenonSpeakerDistance.Meters` and `DenonSpeakerDistanceConfiguration.Step` in meters, even when the receiver is configured to display feet. `ReceiverUnit` preserves the AVR's current UI unit (`Feet` or `Meters`), and `M2FConvertRatio` exposes the optional conversion metadata returned by the receiver.
+`GetSpeakerDistancesAsync()` reads `/ajax/speakers/get_config?type=4`. The public API always returns `DenonSpeakerDistance.Meters` and `DenonSpeakerDistanceConfiguration.Step` in meters. `ReceiverUnit` preserves the AVR's current UI unit metadata, and `M2FConvertRatio` exposes optional conversion metadata returned by the receiver.
 
-`SetSpeakerDistanceAsync()` accepts meters, first reads the current distance configuration, converts the requested value to the receiver's active unit, and writes the receiver-specific raw value through `set_config?type=4`. A non-positive or non-finite distance is rejected. As with speaker-preset levels, the X6700H, legacy, and unknown profiles currently throw `NotSupportedException` instead of sending X6800H-specific requests.
+`SetSpeakerDistanceAsync()` accepts meters and writes the raw value through `set_config?type=4`. The captured X6700H responses show that raw distance values are meters × 100 independently of the UI display unit (`476` = `4.76 m`). A non-positive or non-finite distance is rejected. The X6800H and X6700H profiles support this API; legacy and unknown profiles still throw `NotSupportedException`.
 
 Only the test-tone stop request `<StopTestTone></StopTestTone>` has been observed so far. The library therefore does not yet implement start or stop commands until the corresponding start request has been recorded unambiguously.
 
@@ -390,11 +392,13 @@ Task VolumeUpAsync(CancellationToken cancellationToken = default)
 Task VolumeDownAsync(CancellationToken cancellationToken = default)
 Task VolumeUpAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default)
 Task VolumeDownAsync(DenonControlProtocol protocol, CancellationToken cancellationToken = default)
-Task SetVolumeAsync(double volumeDb, CancellationToken cancellationToken = default)
-Task SetVolumeAsync(double volumeDb, DenonControlProtocol protocol, CancellationToken cancellationToken = default)
+Task SetVolumeAsync(double volume, CancellationToken cancellationToken = default)
+Task SetVolumeAsync(double volume, DenonControlProtocol protocol, CancellationToken cancellationToken = default)
+Task SetVolumeDbAsync(double volumeDb, CancellationToken cancellationToken = default)
+Task SetVolumeDbAsync(double volumeDb, DenonControlProtocol protocol, CancellationToken cancellationToken = default)
 ```
 
-`SetVolumeAsync()` accepts `-80.0` to `+18.0 dB`. Values are rounded to half-decibel increments and transmitted with a decimal point regardless of the current system language.
+`SetVolumeAsync()` accepts Denon absolute values from `0.0` to `98.0`; `80.0` is `0 dB`. Values are rounded to half-step increments. `SetVolumeDbAsync()` is the explicit relative-dB alternative and accepts `-80.0` to `+18.0 dB`.
 
 ### Mute
 
@@ -471,11 +475,11 @@ This method does not check whether the receiver supports the supplied command.
 
 | Property | Type | Description |
 | --- | --- | --- |
-| `SpeakerIndex` | `int` | Modern Denon web-interface index on port 11080 |
+| `SpeakerIndex` | `int` | Receiver-specific Denon speaker web-interface index |
 | `Decibels` | `double` | Actual level of the active speaker preset |
 | `Channel` | `SpeakerChannel?` | Channel inferred from the web index, or a flags combination for combined subwoofer entries |
 
-`DenonSpeakerPresetIndexConverter` contains the full mapping for indices `0` through `35`, derived from the AVC-X6800H web interface. This includes `Subwoofer2`, `Subwoofer3`, and `Subwoofer4`, which were added to the `SpeakerChannel` flags enum.
+`DenonSpeakerPresetIndexConverter` maps the level-page indices to `SpeakerChannel`. Speaker-distance pages use a separate `DenonSpeakerDistanceIndexConverter`, because their index order differs from the level-page order. This distinction is required on the X6700H and is preserved in the public model.
 
 
 ## `DenonSpeakerLevelSnapshot`
@@ -497,7 +501,7 @@ This method does not check whether the receiver supports the supplied command.
 | `M2FConvertRatio` | `int?` | Optional meter-to-feet conversion metadata returned by the AVR |
 | `Speakers` | `IReadOnlyList<DenonSpeakerDistance>` | Speaker distances of the active preset |
 
-Each `DenonSpeakerDistance` contains the web-interface `SpeakerIndex`, the normalized `Meters` value, and an optional typed `Channel` resolved with the same index mapping used by speaker-preset levels.
+Each `DenonSpeakerDistance` contains the web-interface `SpeakerIndex`, the normalized `Meters` value, and an optional typed `Channel` resolved with the dedicated distance index mapping.
 
 ## `DenonDeviceInfo`
 
@@ -517,7 +521,8 @@ Each `DenonSpeakerDistance` contains the web-interface `SpeakerIndex`, the norma
 | `IsPoweredOn` | `bool` | `true` when `Power` is `ON` |
 | `Power` | `string` | Original value or `UNKNOWN` |
 | `Input` | `string?` | Current Denon input protocol name |
-| `VolumeDb` | `double?` | Master volume in dB |
+| `Volume` | `double?` | Master volume on Denon's absolute `0..98` scale |
+| `VolumeDb` | `double?` | The same master volume in relative dB |
 | `IsMuted` | `bool?` | `true`, `false`, or unknown |
 | `AvailableInputs` | `IReadOnlyList<string>` | Active/not-deleted standard sources |
 | `Audio` | `DenonAudioInfo?` | Optional audio and speaker information |

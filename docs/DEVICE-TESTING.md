@@ -37,16 +37,25 @@ Run control tests deliberately and one at a time. Before powering off, the sampl
 | Input list | Open option `9` | Only enabled inputs are shown |
 | CBL/SAT | Select `CBL/SAT` | Receiver switches to SAT/CBL |
 | Media Player | Select `Media Player` | Receiver switches to MPLAY |
-| Volume | Options `4`, `5`, `6` | The new volume appears in the status |
+| Volume | Options `4`, `5`, `6` | The new volume appears in the status; absolute `0..98` and explicit dB APIs represent the same level |
 | Mute | Options `7`, `8` | Mute status changes |
 | Audio format | Play a source with an active signal | Format and sound mode are plausible |
 | Speakers | Play multichannel material | Active channels match playback |
-| Speaker-preset levels | On an X6800H, open `L → 1` | Persistent Setup → Speakers → Levels values and indices are plausible |
-| Speaker-preset write | On an X6800H, use `L → H` on a known channel and restore it afterwards | Setup value changes by the requested amount |
+| Speaker-preset levels | On an X6800H or X6700H, open `L → 1` | Persistent Setup → Speakers → Levels values and indices are plausible |
+| Speaker-preset write | On an X6800H or X6700H, use `L → H` on a known channel and restore it afterwards | Setup value changes by the requested amount |
+| Configured speakers | Select `S` | Configured physical speakers are listed with persistent level and distance; current playback activity must not remove configured speakers |
+| Speaker distance write | Select `SD`, change one known speaker by a small amount, then restore it | Distance changes and rereads correctly in meters |
+| HTTP speaker preset | Select `P`, read preset, switch 1 ↔ 2, then restore the original preset | The selected preset is confirmed by the receiver |
 
 ### Receiver-profile speaker setup
 
-For X6800H-specific speaker setup tests, also verify `ReceiverProfileId == "avc-x6800h"` and `SpeakerPresetCount == 2`. Programmatic distance tests can use `GetSpeakerDistancesAsync()` and `SetSpeakerDistanceAsync()`. Read values are always returned in meters even if the receiver UI is set to feet; after a write, reread the value and restore the original distance.
+For an X6800H, verify `ReceiverProfileId == "avc-x6800h"`; for an X6700H, verify `ReceiverProfileId == "avc-x6700h"`. Both profiles currently report `SpeakerPresetCount == 2` and support persistent speaker levels, speaker distances, and HTTP/HTTPS speaker-preset selection.
+
+The X6800H speaker setup uses HTTP/11080. The X6700H uses HTTPS/10443; the library accepts the receiver's local device certificate only for this explicitly profiled speaker-setup transport. A TLS error here indicates that the receiver-specific HTTPS path or certificate handling is not active.
+
+Programmatic distance tests can use `GetSpeakerDistancesAsync()` and `SetSpeakerDistanceAsync()`. Read values are always returned in meters. On the captured X6700H interface, raw values are meters × 100 (`476` = `4.76 m`); after a write, reread the value and restore the original distance.
+
+`GetConfiguredSpeakersAsync()` must return the persistent physical speaker setup even when the current input signal does not activate all channels. Do not compare its count directly with `state.Audio.ActiveSpeakerChannels`: those channels describe current playback activity, not speaker configuration.
 
 Snapshot tests should capture the current persistent levels with `CreateSpeakerLevelSnapshotAsync()`, make only a deliberate temporary level change, and restore the captured snapshot before finishing. Do not run destructive write tests unattended.
 

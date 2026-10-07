@@ -212,29 +212,37 @@ For `CV?`, the receiver responds only for channels present in its current speake
 
 The command codes correspond to the official Denon Control Protocol for TCP port 23 and its documented `CV` response format.
 
-## Speaker setup in the web interface (HTTP port 11080)
+## Speaker setup in the web interface
+
+The speaker-setup interface is separate from the normal HTTP/XML API and is selected by receiver profile:
+
+| Receiver | Scheme | Port | Certificate handling |
+| --- | --- | ---: | --- |
+| AVC-X6800H | HTTP | `11080` | Normal HTTP |
+| AVC-X6700H | HTTPS | `10443` | The local device certificate is explicitly accepted only for this profiled speaker transport |
 
 ### Speaker-preset levels
 
-On the AVC-X6800H, the modern web interface is separate from the normal HTTP/XML API and runs on port `11080`. The actual values from the **Levels** page are read and set with these GET requests:
+Both profiles read the active preset's **Levels** page with `get_config?type=5`, but their captured write payloads differ:
 
-| Purpose | Path |
+| Receiver / purpose | Path / payload |
 | --- | --- |
-| Read levels of the active speaker preset | `/ajax/speakers/get_config?type=5&_…` |
-| Set speaker index 2 to -3.5 dB | `/ajax/speakers/set_config?type=20&data=%3CSpeaker%20index%3D%222%22%3E-35%3C%2FSpeaker%3E&_…` |
+| Read levels | `/ajax/speakers/get_config?type=5&_…` |
+| X6800H write | `/ajax/speakers/set_config?type=20&data=<encoded Speaker XML>&_…` |
+| X6700H write | `/ajax/speakers/set_config?type=5&data=<encoded List/Speaker XML>&_…` |
 
-The value inside `Speaker` is in tenths of a decibel (`-35` = `-3.5 dB`). `DenonAvrClient.GetSpeakerPresetLevelsAsync()` and `SetSpeakerPresetLevelAsync()` use this port automatically. Starting the test tone is not yet documented or implemented; only `<StopTestTone></StopTestTone>` has been observed.
+The value inside `Speaker` is in tenths of a decibel (`-35` = `-3.5 dB`). The X6700H captured write payload is conceptually `<List><Speaker index="0">-35</Speaker></List>`. `DenonAvrClient.GetSpeakerPresetLevelsAsync()` and `SetSpeakerPresetLevelAsync()` choose the correct transport and payload from the receiver profile.
 
 ### Speaker distances
 
-The AVC-X6800H exposes persistent distances of the active speaker preset through the same setup interface:
+The X6800H and X6700H expose persistent distances of the active speaker preset through the same logical AJAX endpoints:
 
 | Purpose | Path |
 | --- | --- |
 | Read speaker distances | `/ajax/speakers/get_config?type=4&_…` |
 | Set one speaker distance | `/ajax/speakers/set_config?type=4&data=<encoded Distances XML>&_…` |
 
-The read response contains a `Distances` element with the receiver's selected `Unit`, raw `Step`, optional `M2FConvertRatio`, and a `List` of indexed `Speaker` values. `Unit=1` means feet and `Unit=2` means meters. Raw distance and step values use hundredths of the selected display unit.
+The read response contains a `Distances` element with `Unit`, raw `Step`, optional `M2FConvertRatio`, and a `List` of indexed `Speaker` values. In the captured X6700H data, `Unit=1` represents meters and `Unit=2` feet. Raw distance and step values are interpreted as meters × 100 (`476` = `4.76 m`) independently of the UI display unit.
 
 For example, the set payload is conceptually:
 
@@ -242,6 +250,20 @@ For example, the set payload is conceptually:
 <Distances><List><Speaker index="0">325</Speaker></List></Distances>
 ```
 
-when `325` is the raw value required by the receiver. `DenonAvrNet` does not expose these raw values publicly: it normalizes read values and steps to meters and converts meters back to the receiver's selected unit before writing.
+when `325` represents `3.25 m`. `DenonAvrNet` does not expose these raw values publicly: read values and steps are normalized to meters, and writes convert meters back to the raw meters × 100 representation.
 
-These port-11080 endpoints are currently enabled only by the `avc-x6800h` receiver profile. The X6700H has a different web setup implementation and therefore deliberately uses unsupported providers until its exact requests have been captured.
+### Speaker-preset selection
+
+The active speaker preset is read and written with `type=11` on both supported profiles:
+
+| Purpose | Path / payload |
+| --- | --- |
+| Read active preset | `/ajax/speakers/get_config?type=11&_…` |
+| Select preset 1 | `/ajax/speakers/set_config?type=11&data=<SpeakerPreset>1</SpeakerPreset>&_…` |
+| Select preset 2 | `/ajax/speakers/set_config?type=11&data=<SpeakerPreset>2</SpeakerPreset>&_…` |
+
+A successful read returns `<SpeakerPreset>1</SpeakerPreset>` or `<SpeakerPreset>2</SpeakerPreset>`. The library polls after selection until the requested preset is reported active.
+
+### Configured speakers versus active audio channels
+
+The persistent Levels and Distances pages describe the receiver's speaker setup. `GetActiveSpeaker`/`ActiveSpeakerChannels` instead describe channels currently active in the audio signal. They are intentionally not used to decide whether a speaker is configured. `GetConfiguredSpeakersAsync()` joins the persistent level and distance data by `SpeakerChannel` because the two pages use different index schemes.
