@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Net.Sockets;
 using DenonAvrNet.Exceptions;
 using DenonAvrNet.Models;
@@ -927,12 +927,12 @@ public sealed class DenonAvrClient : IDisposable
     }
 
     /// <summary>
-    /// Returns the speakers that exist in the receiver's configuration together with their persistent
-    /// level (dB) and distance (meters) from the active speaker preset (HTTP only).
-    /// Existence is taken from the receiver's active-speaker list. The receiver reports all subwoofers
-    /// there as one <see cref="SpeakerChannel.Subwoofer"/> flag; if it is set, every individual subwoofer
-    /// index returned by the speaker setup interface is included. Combined group entries are omitted.
-    /// Returns an empty list if the receiver reports no active-speaker information.
+    /// Returns the speakers that exist in the receiver's persistent speaker configuration together with
+    /// their level (dB) and distance (meters) from the active speaker preset (HTTP only).
+    /// The speaker setup pages themselves are authoritative for configured speakers; this method therefore
+    /// does not depend on the currently active audio channels reported by <c>GetActiveSpeaker</c>.
+    /// Level and distance pages use different index schemes and are joined by channel. Combined group
+    /// entries (for example the aggregate subwoofer entry) are omitted.
     /// </summary>
     /// <exception cref="InvalidOperationException">The client has not been initialized.</exception>
     /// <exception cref="NotSupportedException">The receiver profile does not support levels or distances.</exception>
@@ -945,14 +945,6 @@ public sealed class DenonAvrClient : IDisposable
         {
             throw new NotSupportedException(
                 "Das Lesen von Lautsprecher-Pegeln und -Distanzen wird von diesem Receiver nicht unterstützt.");
-            // <-----------
-        }
-
-        var state = await UpdateAsync(cancellationToken).ConfigureAwait(false);
-        var activeChannels = state.Audio?.ActiveSpeakerChannels ?? SpeakerChannel.None;
-        if (activeChannels == SpeakerChannel.None)
-        {
-            return [];
             // <-----------
         }
 
@@ -972,12 +964,6 @@ public sealed class DenonAvrClient : IDisposable
             .Where(distance => distance.Channel is not null)
             .ToLookup(distance => distance.Channel!.Value);
 
-        const SpeakerChannel subwooferChannels =
-            SpeakerChannel.Subwoofer |
-            SpeakerChannel.Subwoofer2 |
-            SpeakerChannel.Subwoofer3 |
-            SpeakerChannel.Subwoofer4;
-
         var channels = levelsByChannel
             .Select(group => group.Key)
             .Union(distancesByChannel.Select(group => group.Key))
@@ -990,19 +976,6 @@ public sealed class DenonAvrClient : IDisposable
             // Combined group entry (for example 32 or 35): not a physical speaker.
             if (channel == SpeakerChannel.None ||
                 System.Numerics.BitOperations.PopCount((ulong)channel) != 1)
-            {
-                continue;
-                // <-----------
-            }
-
-            // The active-speaker list reports all subwoofers as one flag (Subwoofer),
-            // so every single subwoofer index exists if that flag is set.
-            var isSubwoofer = (channel & subwooferChannels) != SpeakerChannel.None;
-            var exists = isSubwoofer
-                ? activeChannels.HasFlag(SpeakerChannel.Subwoofer)
-                : activeChannels.HasFlag(channel);
-
-            if (!exists)
             {
                 continue;
                 // <-----------

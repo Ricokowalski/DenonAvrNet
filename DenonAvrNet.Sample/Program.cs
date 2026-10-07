@@ -131,6 +131,10 @@ try
                     await ShowSpeakerLevelsAndDistancesAsync(receiver, cancellationSource.Token);
                     break;
                 // <-----------
+                case "SD":
+                    await SetSpeakerDistanceFromConsoleAsync(receiver, cancellationSource.Token);
+                    break;
+                // <-----------
                 case "G":
                     ControlReceiverLogger();
                     break;
@@ -245,6 +249,7 @@ static void PrintMenu(bool telnetOutputEnabled)
           P    Speaker preset: read/switch (HTTP, with confirmation)
           L    Channel levels (Telnet)
           S    Show speaker levels and distances (HTTP)
+          SD   Set speaker distance (HTTP)
 
         CONSOLE AND LOG
           TE   Telnet output on      TD   Telnet output off     (now: {(telnetOutputEnabled ? "on" : "off")})
@@ -356,6 +361,60 @@ static async Task ShowSpeakerLevelsAsync(
     {
         Console.WriteLine($"  {(level.Channel?.ToString() ?? "Unknown"),-42} {level.Decibels:0.0} dB (Index {level.SpeakerIndex})");
     }
+}
+
+static async Task SetSpeakerDistanceFromConsoleAsync(
+    DenonAvrClient receiver,
+    CancellationToken cancellationToken)
+{
+    if (!receiver.IsFeatureAvailable(AvrFeature.SpeakerDistanceControl))
+    {
+        Console.WriteLine("This receiver does not support speaker distances via HTTP.");
+        return;
+        // <-----------
+    }
+
+    var configuration = await receiver.GetSpeakerDistancesAsync(cancellationToken);
+
+    Console.WriteLine("Current speaker distances:");
+    foreach (var speaker in configuration.Speakers)
+    {
+        Console.WriteLine(
+            $"  {speaker.SpeakerIndex,5}  {(speaker.Channel?.ToString() ?? "Unknown"),-24} " +
+            $"{speaker.Meters.ToString("0.00", CultureInfo.GetCultureInfo("de-DE")),8} m");
+    }
+
+    Console.Write("Speaker distance index: ");
+    if (!int.TryParse(Console.ReadLine()?.Trim(), out var speakerIndex) || speakerIndex < 0)
+    {
+        Console.WriteLine("Invalid speaker index.");
+        return;
+        // <-----------
+    }
+
+    Console.Write("New distance in meters: ");
+    if (!TryParseGermanOrInvariantDouble(Console.ReadLine()?.Trim(), out var meters) ||
+        !double.IsFinite(meters) ||
+        meters <= 0)
+    {
+        Console.WriteLine("Invalid distance.");
+        return;
+        // <-----------
+    }
+
+    if (!Confirm($"Set speaker distance index {speakerIndex} to {meters:0.00} m?"))
+    {
+        return;
+        // <-----------
+    }
+
+    await receiver.SetSpeakerDistanceAsync(
+        speakerIndex,
+        meters,
+        cancellationToken);
+
+    Console.WriteLine(
+        $"Speaker distance index {speakerIndex}: {meters:0.00} m written.");
 }
 
 static async Task ShowSpeakerLevelsAndDistancesAsync(
