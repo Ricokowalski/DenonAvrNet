@@ -1,4 +1,4 @@
-using DenonAvrNet.Exceptions;
+﻿using DenonAvrNet.Exceptions;
 using DenonAvrNet.Logger;
 using DenonAvrNet.Models;
 using DenonAvrNet.Profiles;
@@ -354,24 +354,8 @@ public sealed class DenonTelnetClient
         return SendCommandAsync($"{zonePrefix}{protocolName}", cancellationToken);
     }
 
-    private static string ToTelnetVolumeValue(double volumeDb)
-    {
-        if (volumeDb is < -80.0 or > 18.0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(volumeDb),
-                volumeDb,
-                "Die Lautstärke muss zwischen -80,0 und +18,0 dB liegen.");
-        }
-
-        var roundedVolume = Math.Round(volumeDb * 2, MidpointRounding.ToEven) / 2.0;
-        var protocolValue = roundedVolume + 80.0;
-        var wholeValue = (int)Math.Floor(protocolValue);
-
-        return protocolValue - wholeValue >= 0.5
-            ? $"{wholeValue:00}5"
-            : $"{wholeValue:00}";
-    }
+    private static string ToTelnetVolumeValue(double volumeDb) =>
+        DenonVolumeCodec.ToTelnetValue(volumeDb);
 
     private async Task<IReadOnlyList<string>> SendCommandUntilAsync(
     string command,

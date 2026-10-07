@@ -63,6 +63,18 @@ internal static class DenonEndpoints
         string invariantVolume) =>
         $"/goform/formiPhoneAppVolume.xml?1+{invariantVolume}";
 
+    internal static string ZoneVolumeUp(int zone) =>
+        $"/goform/formiPhoneAppDirect.xml?Z{zone}UP";
+
+    internal static string ZoneVolumeDown(int zone) =>
+        $"/goform/formiPhoneAppDirect.xml?Z{zone}DOWN";
+
+    internal static string SetZoneVolume(int zone, string invariantVolume) =>
+        $"/goform/formiPhoneAppVolume.xml?{zone}+{invariantVolume}";
+
+    internal static string SetZoneMute(int zone, bool muted) =>
+        $"/goform/formiPhoneAppMute.xml?{zone}+{(muted ? "MuteOn" : "MuteOff")}";
+
     internal static string SetInput(string input)
     {
         // Denon's command parser expects slashes in protocol source names such

@@ -1,4 +1,4 @@
-# API documentation
+﻿# API documentation
 
 This document describes the publicly usable types and intended lifecycle of `DenonAvrNet`.
 
@@ -135,6 +135,15 @@ receiver.PreferredControlProtocol = DenonControlProtocol.Telnet;
 
 `Auto` initially uses HTTP after a successful `InitializeAsync()`. If initialization has not run yet, Telnet is used. If an HTTP control command throws `HttpRequestException` (for example HTTP 403), `Auto` falls back to Telnet once. Explicitly selected `Http` or `Telnet` does not fall back.
 
+Volume values use one public representation across all transports and zones: **decibels from -80.0 through +18.0 dB in 0.5 dB steps**. Denon's Telnet absolute scale (`00`...`98`, where `80` means `0 dB`) is converted internally and never needs to be handled by library consumers. Mute is always a separate boolean operation and is never represented by a volume value.
+
+```csharp
+await receiver.SetVolumeAsync(-30.0);
+await receiver.SetZone2VolumeAsync(-40.0);
+await receiver.SetZone3VolumeAsync(-45.5, DenonControlProtocol.Telnet);
+await receiver.SetZone2MuteAsync(true);
+```
+
 ### `AvrFeature` and `DenonReceiverCapabilities`
 
 `AvrFeature` describes a function offered by the **library**. Use `GetSupportedProtocols()` to determine the implemented transport:
@@ -149,9 +158,9 @@ var eventTransport = receiver.GetSupportedProtocols(AvrFeature.LiveEvents);
 
 | `AvrFeature` | Library transport |
 | --- | --- |
-| `MainZonePower`, `MainZoneVolume`, `MainZoneMute`, `MainZoneInput` | HTTP and Telnet |
-| `MainZoneStatus`, `AudioInformation`, `ActiveSpeakerStatus`, `SpeakerPresetLevelControl`, `SpeakerDistanceControl` | HTTP |
-| `Zone2Control`, `Zone3Control`, `LiveEvents`, `ChannelLevelRead`, `ChannelLevelControl`, `SpeakerPresetControl`, `SurroundModeControl`, `DigitalInputModeControl` | Telnet |
+| `MainZonePower`, `MainZoneVolume`, `MainZoneMute`, `MainZoneInput`, `Zone2Control`, `Zone3Control` | HTTP and Telnet |
+| `MainZoneStatus`, `AudioInformation`, `ActiveSpeakerStatus`, `SpeakerPresetLevelControl`, `SpeakerDistanceControl`, `SpeakerPresetSelection` | HTTP |
+| `LiveEvents`, `ChannelLevelRead`, `ChannelLevelControl`, `SpeakerPresetControl`, `SurroundModeControl`, `DigitalInputModeControl` | Telnet |
 
 `DenonReceiverCapabilities` instead describes the **detected AVR model**. After `InitializeAsync()`, HTTP, AppCommand, the zone count, and Zone 2/3 are known. `SupportsTelnet` initially remains `null` so an untested port is not incorrectly treated as unsupported. A read-only `PW?` command checks the port without changing state:
 

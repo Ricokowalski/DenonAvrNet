@@ -266,6 +266,46 @@ public sealed class DenonAvrClientTests
             handler.RequestedUris[^1].PathAndQuery);
     }
 
+    [Theory]
+    [InlineData(2, -35.26, "/goform/formiPhoneAppVolume.xml?2+-35.5")]
+    [InlineData(3, 0.0, "/goform/formiPhoneAppVolume.xml?3+0.0")]
+    public async Task SetAdditionalZoneVolumeAsync_UsesSameDbScaleAsMainZone(
+        int zone,
+        double volumeDb,
+        string expectedPathAndQuery)
+    {
+        var handler = CreateInitializedReceiverHandler();
+        using var transport = new DenonHttpTransport(handler, TimeSpan.FromSeconds(1));
+        using var client = new DenonAvrClient("10.37.0.190", transport);
+        await client.InitializeAsync();
+
+        if (zone == 2)
+        {
+            await client.SetZone2VolumeAsync(volumeDb, DenonControlProtocol.Http);
+        }
+        else
+        {
+            await client.SetZone3VolumeAsync(volumeDb, DenonControlProtocol.Http);
+        }
+
+        Assert.Equal(expectedPathAndQuery, handler.RequestedUris[^1].PathAndQuery);
+    }
+
+    [Fact]
+    public async Task SetZone2MuteAsync_UsesSeparateMuteCommand()
+    {
+        var handler = CreateInitializedReceiverHandler();
+        using var transport = new DenonHttpTransport(handler, TimeSpan.FromSeconds(1));
+        using var client = new DenonAvrClient("10.37.0.190", transport);
+        await client.InitializeAsync();
+
+        await client.SetZone2MuteAsync(true, DenonControlProtocol.Http);
+
+        Assert.Equal(
+            "/goform/formiPhoneAppMute.xml?2+MuteOn",
+            handler.RequestedUris[^1].PathAndQuery);
+    }
+
     [Fact]
     public async Task SetInputAsync_MapsTvAudioToProtocolName()
     {
